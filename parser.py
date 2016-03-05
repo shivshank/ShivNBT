@@ -72,15 +72,14 @@ class NbtReader:
                                       t.id, t.name)
 
         return t
-    def parsePayload(self, id):
-        # convert id into function name and then access that function w/ getattr
-        return getattr(self, NbtReader.payloads[id])()
     def readTagHeader(self):
         id = self.readByte()
         if id == 0:
             return Tag(id, '')
         t = Tag(id, self.readString(self.readShort()))
         return t
+    def parsePayload(self, id):
+        return getattr(self, NbtReader.payloads[id])()
     def readCompound(self):
         result = {}
         while True:
@@ -108,17 +107,7 @@ class NbtReader:
         for i in range(size):
             value.append(self.parsePayload(Tag.TAG_Int))
         return value
-    def __enter__(self):
-        self.file = open(self.path, mode='rb')
-        if self.file.read(2) == b'\x1f\x8b':
-            self.file.close()
-            self.file = gzip.open(self.path, mode='rb')
-        else:
-            self.file.seek(0)
-        return self
-    def __exit__(self, exc_type, exc_val, trace):
-        if self.file is not None:
-            self.file.close()
+    # numeric tags
     def readDouble(self):
         return struct.unpack('>d', self.file.read(8))[0]
     def readFloat(self):
@@ -137,8 +126,21 @@ class NbtReader:
         s = self.file.read(length)
         s = s.decode('utf-8')
         return s
+    def __enter__(self):
+        self.file = open(self.path, mode='rb')
+        if self.file.read(2) == b'\x1f\x8b':
+            print('File may be gzipped, decompressing...')
+            self.file.close()
+            self.file = gzip.open(self.path, mode='rb')
+        else:
+            print('File is not likely gzipped, skipping decompression.')
+            self.file.seek(0)
+        return self
+    def __exit__(self, exc_type, exc_val, trace):
+        if self.file is not None:
+            self.file.close()
 
 
 if __name__ == "__main__":
-    with NbtReader('level.dat') as r:
+    with NbtReader('r.0.0.mca') as r:
         r.parse().prettyprint()
