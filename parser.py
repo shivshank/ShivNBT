@@ -2,6 +2,21 @@ import gzip
 import struct
 import pprint
 
+def openNbt(path, gzipped=False):
+    if gzipped:
+        return gzip.open(path, mode='rb')
+    else:
+        return open(path, mode='rb')
+
+def isGzipped(stream):
+    """ -> True if this stream is most likely gzipped
+        checks if the stream begins with the gzipped magic numbers
+    """
+    pos = stream.tell()
+    res = stream.read(2) == b'\x1f\x8b'
+    stream.seek(pos)
+    return res
+
 class Tag:
     TAG_End = 0
     TAG_Byte = 1
@@ -53,9 +68,8 @@ class NbtReader:
         Tag.TAG_Int_Array: 'readIntArray'
     }
     
-    def __init__(self, path):
-        self.path = path
-        self.file = None
+    def __init__(self, stream):
+        self.file = stream
         self.root = None
     def parse(self):
         self.root = self.readTag()
@@ -126,21 +140,7 @@ class NbtReader:
         s = self.file.read(length)
         s = s.decode('utf-8')
         return s
-    def __enter__(self):
-        self.file = open(self.path, mode='rb')
-        if self.file.read(2) == b'\x1f\x8b':
-            print('File may be gzipped, decompressing...')
-            self.file.close()
-            self.file = gzip.open(self.path, mode='rb')
-        else:
-            print('File is not likely gzipped, skipping decompression.')
-            self.file.seek(0)
-        return self
-    def __exit__(self, exc_type, exc_val, trace):
-        if self.file is not None:
-            self.file.close()
-
 
 if __name__ == "__main__":
-    with NbtReader('r.0.0.mca') as r:
-        r.parse().prettyprint()
+    with openNbt('demo/level.dat', gzipped=True) as file:
+        NbtReader(file).parse().prettyprint()
