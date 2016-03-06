@@ -16,14 +16,6 @@ import zlib
 import nbt
 import io
 
-def openMca(path):
-    # TOOD... this should return some kinda object?
-    dir, fileName = os.path.split(path)
-    r, x, z, ext = fileName.split('.')
-    with open(path, mode='rb') as file:
-        chunks = readRegionHeader(int(x), int(z), file)
-    return chunks
-
 def readRegionHeader(regionX, regionZ, stream):
     # stream offset = 4 * ((x & 31) + (z & 31) * 32)
     # this implies that every 32 bytes increments the z coordinate
@@ -48,6 +40,8 @@ def readRegionHeader(regionX, regionZ, stream):
     return header
 
 def readChunk(offset, size, stream):
+    """ Returns the NBT Tag describing a chunk at offset within the region file
+    """
     # offset and size are in terms of 4096kib
     stream.seek(offset * 4096, 0)
     # the length in bytes of the chunk
@@ -63,23 +57,24 @@ def readChunk(offset, size, stream):
         unzipped = io.BytesIO(gzip.decompress(stream.read(length - 1)))
 
     reader = nbt.NbtReader(unzipped)
-    root = reader.parse()
-    
+    return reader.read()
+
+def parseChunkNbt(root):
     chunkDict = root.pythonify()
     cx, cz = chunkDict['Level']['xPos'], chunkDict['Level']['zPos']
     chunk = Chunk(cx, cz)
     for section in chunkDict['Level']['Sections']:
         blocks = []
-        sectionY = section['Y'].pythonify()
+        sectionY = section['Y']
         # 8 bits per block
-        ids = section['Blocks'].pythonify()
+        ids = section['Blocks']
         # 4 bits per block
         try:
-            add = section['Add'].pythonify()
+            add = section['Add']
         except KeyError:
             add = None
         # 4 bits per block
-        data = section['Data'].pythonify()
+        data = section['Data']
         index = 0
         # blocks are stored YZX
         for y in range(16):
@@ -99,21 +94,56 @@ def readChunk(offset, size, stream):
 
     return chunk
 
+def writeChunk(tag, offset, regionFile):
+    # TODO: update chunk header offset/size, right now we just pray!
+    b = io.BytesIO()
+    writer = nbt.NbtWriter(b)
+    writer.write(tag)
+    b.seek(0)
+    data = b.read()
+    # seek to the start of the chunk in the region file
+    regionFile.seek(offset * 4096)
+    # write the length of this chunks data + 1 for compression type
+    regionFile.write((len(data) + 1).to_bytes(3, 'big', signed=True))
+    # we are using compression type 2, zlib
+    regionFile.write(b'\x02')
+    # write the chunk data!
+    data = zlib.compress(data)
+    regionFile.write(data)
+
+def getChunkNbt(chunk):
+    pass
+
 class Chunk:
-    def __init__(self, xPos, zPos):
+    def __init__(self, xPos, zPos, inhabitedTime=0):
         self.sections = {}
+        self.biomes = []
+        self.heightmap = []
+        self.inhabitedTime = inhabitedTime
         self.x = xPos
         self.z = zPos
     def addSection(self, y, blocks):
         # blocks are ordered YZX
         self.sections[y] = blocks
     def getBlock(self, x, y, z):
+        if x > 15 or x < 0 or y > 255 or y < 0 or z > 15 or z < 0:
+            raise ValueError('getBlock takes local chunk block coordinates')
         # blocks are ordered YZX
         try:
             return self.sections[y//16][(y & 15)*256 + z*16 + x]
         except KeyError:
             # the section does not exist
             return None
+    def getAsciiYCrossSection(self, y):
+        out = []
+        for z in range(16):
+            out.append([])
+            for x in range(16):
+                b = self.getBlock(x, y, z)
+                b = str(b.id) + ((':' + str(b.data)) if b.data != 0 else '')
+                out[z].append(b)
+            out[z] = ' | '.join(out[z])
+        return '\n'.join(out)
 
 class Block:
     def __init__(self, id, data):
@@ -134,20 +164,37 @@ class RegionHeader:
         timestamp = time.localtime(epochTimestamp)
         self.chunks[self._toChunkId(localX, localZ)] = (offset, size, timestamp)
         self.count += 1
-    def getChunk(self, x, z, isGlobalCoordinate=False):
-        if isGlobalCoordinate:
-            x -= self.x * 32
-            z -= self.z * 32
-        return self.chunks[self._toChunkId(x, z)]
+    def getChunk(self, x, z):
+        """ Chunks are always in global chunk coordinates """
+        # convert global coords to internal coords
+        x -= self.x * 32
+        z -= self.z * 32
+        if x < 0 or z < 0 or x > 31 or z > 31:
+            raise ValueError('Chunk is not in region ('
+                           + str(self.x) + ', ' + str(self.z) + ')')
+
+        try:
+            return self.chunks[self._toChunkId(x, z)]
+        except KeyError:
+            raise ValueError('Chunk has not been generated yet.')
     def _toChunkId(self, x, z):
         return x + z * 32
 
+class MinecraftWorld:
+    def __init__(self, savePath):
+        self.path = savePath
+        self.regionCache = {}
+        self.chunkCache = {}
+        self.cachedChunks = 0
+        self.cachedRegions = 0
+    def getBlock(self):
+        pass
+    def getChunk(self, x, z):
+        pass
+    def _dropChunk(self):
+        pass
+    def _dropRegion(self):
+        pass
+
 def getRegionPos(chunkX, chunkZ):
     return (chunkX >> 5, chunkZ >> 5)
-
-if __name__ == '__main__':
-    with open('demo/r.0.0.mca', mode='rb') as file:
-        header = readRegionHeader(0, 0, file)
-        offset, size, timestamp = header.getChunk(0, 0)
-        chunk = readChunk(offset, size, file)
-    print(chunk.getBlock(0, 63, 0).id)
