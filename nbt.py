@@ -1,12 +1,92 @@
 import gzip
 import struct
-import pprint
+import json
+import os.path
 
-def openNbt(path, gzipped=False):
-    if gzipped:
-        return gzip.open(path, mode='rb')
+def toJson(fileName, outputDir, gzipped=True):
+    """ Write an NBT as two JSON files.
+        the .tagtypes.json file describes the NBT types of all the tags,
+        while the .json file contains the actual values.
+        
+        Two files are required because JSON (Javascript) only supports a single
+        Number type (IEEE floats), so all bytes, shorts, ints, etc are converted
+        to floats.
+        
+        Doubles/longs may be truncated (I presume).
+    """
+    path, name = os.path.split(fileName)
+    tagtypes = os.path.join(outputDir,
+                            os.path.splitext(name)[0] + '.tagtypes.json')
+    tags = os.path.join(outputDir, name + '.json')
+    with gzip.open(fileName) as file:
+        root = NbtReader(file).read()
+    with open(tagtypes, mode='w') as file:
+        json.dump(root.getFormatDict(), file, indent=4)
+    with open(tags, mode='w') as file:
+        json.dump(root.pythonify(), file, indent=4)
+
+def fromJson(rootName, dataFileName, tagtypesFileName):
+    """ Given tagtypes and nbt JSON files, create an NBT Tag. """
+    # perhaps we could use the parse_float and parse_int options of the
+    # json.load function?
+    with open(dataFileName) as file:
+        values = json.load(file)
+    with open(tagtypesFileName) as tagtypesFile:
+        tagtypes = json.load(tagtypesFile)
+
+    return fromDict(rootName, values, tagtypes)
+
+def tagToJson(outputDir, fileName, root):
+    """ Given an NBT tag root, write it to outputDir as JSON. """
+    # remove whatever directory is attached
+    name = os.path.basename(fileName)
+    tagtypes = os.path.join(outputDir,
+                            os.path.splitext(name)[0] + '.tagtypes.json')
+    tags = os.path.join(outputDir, name + '.json')
+    with open(tagtypes, mode='w') as file:
+        json.dump(root.getFormatDict(), file, indent=4)
+    with open(tags, mode='w') as file:
+        json.dump(root.pythonify(), file, indent=4)
+
+def fromDict(name, values, types):
+    t = Tag(0, name)
+    if type(values) == dict:
+        # compound tag
+        t.id = Tag.TAG_Compound
+        t.value = {}
+        for k, v in values.items():
+            t.value[k] = fromDict(k, v, types[k])
+    elif type(values) == list and type(types) == str:
+        # int array or byte array
+        t.id = getattr(Tag, types)
+        t.value = list(values)
+    elif type(values) == list and type(types) == list:
+        # list tag
+        t.id = Tag.TAG_List
+        if type(types[0]) == dict:
+            # OR they will be a list of compound tags
+            t.listType = Tag.TAG_Compound
+            t.value = []
+            for v, cmpType in zip(values, types):
+                compound = {}
+                # where v is each dict
+                # n.b., v and cmpType should have the same keys
+                for name, tag in v.items():
+                    compound[name] = fromDict(name, tag, cmpType[name])
+                t.value.append(compound)
+        else:
+            # list tags are denoted in json by [ "TAG_x" ]
+            t.listType = getattr(Tag, types[0])
+            t.value = list(values)
+    elif type(values) == str:
+        # string tag
+        t.id = Tag.TAG_String
+        t.value = values
     else:
-        return open(path, mode='rb')
+        # it's a float or an int
+        t.id = getattr(Tag, types)
+        t.value = values
+    return t
 
 def isGzipped(stream):
     """ -> True if this stream is most likely gzipped
@@ -30,27 +110,148 @@ class Tag:
     TAG_List = 9
     TAG_Compound = 10
     TAG_Int_Array = 11
+    fromId = {
+        TAG_End: 'TAG_End',
+        TAG_Byte: 'TAG_Byte',
+        TAG_Short: 'TAG_Short',
+        TAG_Int: 'TAG_Int',
+        TAG_Long: 'TAG_Long',
+        TAG_Float: 'TAG_Float',
+        TAG_Double: 'TAG_Double',
+        TAG_Byte_Array: 'TAG_Byte_Array',
+        TAG_String: 'TAG_String',
+        TAG_List: 'TAG_List',
+        TAG_Compound: 'TAG_Compound',
+        TAG_Int_Array: 'TAG_Int_Array'
+    }
     
     def __init__(self, id, name, val=None):
         self.id = id
         self.name = name
         self.value = val
-    def __str__(self):
-        if self.id in (Tag.TAG_Byte_Array, Tag.TAG_Int_Array, Tag.TAG_List):
-            return str([str(i) for i in self.value])
-        elif self.id == Tag.TAG_Compound:
-            return str(dict((k, str(v)) for k, v in self.value.items()))
-            
-        return str(self.value)
+        self.listType = None
     def pythonify(self):
-        if self.id in (Tag.TAG_Byte_Array, Tag.TAG_Int_Array, Tag.TAG_List):
-            return self.value
+        if self.id == Tag.TAG_List:
+            return self._pythonifyPayload(self.value)
         elif self.id == Tag.TAG_Compound:
             return dict((k, v.pythonify()) for k, v in self.value.items())
             
         return self.value
-    def prettyprint(self, indent=2):
-        return pprint.pprint(self.pythonify(), indent=indent)
+    def prettystr(self, indent=4):
+        # JSON dumps looks nice in my opinion than pprint output
+        return json.dumps(self.pythonify(), indent=indent)
+    def getFormatDict(self):
+        if self.id == Tag.TAG_List and self.listType != Tag.TAG_Compound:
+            return [Tag.fromId[self.listType]]
+        elif self.id == Tag.TAG_List:
+            # list type must be TAG_Compound
+            out = []
+            for i in self.value:
+                d = dict((k, v.getFormatDict()) for k, v in i.items())
+                out.append(d)
+            return out
+        elif self.id == Tag.TAG_Compound:
+            return dict((k, v.getFormatDict()) for k, v in self.value.items())
+        return Tag.fromId[self.id]
+    def _pythonifyPayload(self, payload):
+        """ TAG_List.value may contain python dict/lists which may contain tags.
+            This function will recursively probe deeper until all tags
+            are pythonify'd.
+        """
+        if type(payload) == dict:
+            return self._pythonifyDict(payload)
+        return self._pythonifyList(payload)
+    def _pythonifyDict(self, payload):
+        out = {}
+        for k, v in payload.items():
+            if type(v) == dict:
+                out[k] = self._pythonifyPayload(v)
+            elif type(v) == list:
+                out[k] = self._pythonifyPayload(v)
+            elif type(v) == Tag:
+                out[k] = v.pythonify()
+            else:
+                out[k] = i
+        return out
+    def _pythonifyList(self, payload):
+        out = []
+        for i in payload:
+            if type(i) == dict:
+                out.append(self._pythonifyPayload(i))
+            elif type(i) == list:
+                out.append(self._pythonifyPayload(i))
+            elif type(i) == Tag:
+                out.append(tag.pythonify())
+            else:
+                out.append(i)
+        return out
+
+class NbtWriter:
+    payloads = {
+        Tag.TAG_End: None,
+        Tag.TAG_Byte: 'writeByte',
+        Tag.TAG_Short: 'writeShort',
+        Tag.TAG_Int: 'writeInt',
+        Tag.TAG_Long: 'writeLong',
+        Tag.TAG_Float: 'writeFloat',
+        Tag.TAG_Double: 'writeDouble',
+        Tag.TAG_Byte_Array: 'writeByteArray',
+        Tag.TAG_String: 'writeString',
+        Tag.TAG_List: 'writeList',
+        Tag.TAG_Compound: 'writeCompound',
+        Tag.TAG_Int_Array: 'writeIntArray'
+    }
+    
+    def __init__(self, stream):
+        self.file = stream
+    def write(self, tag):
+        self.writeHeader(tag)
+        self.writePayload(tag.id, tag.value, tag)
+    def writeHeader(self, tag):
+        self.writeByte(tag.id)
+        self.writeString(tag.name)
+    def writePayload(self, id, value, tag=None):
+        # use the class variable payloads to select a method
+        getattr(self, NbtWriter.payloads[id])(payload=value, tag=tag)
+    # complex types
+    def writeByteArray(self, tag=None, **kw):
+        self.writeInt(len(tag.value))
+        for i in tag.value:
+            self.writeByte(i)
+    def writeIntArray(self, tag=None, **kw):
+        self.writeInt(len(tag.value))
+        for i in tag.value:
+            self.writeInt(i)
+    def writeList(self, tag=None, **kw):
+        self.writeByte(tag.listType)
+        self.writeInt(len(tag.value))
+        for i in tag.value:
+            # if list contains lists, then the second tag argument
+            # will be used; if list contains compounds, then the payload
+            # argument will be used. This is hacky but it works...
+            self.writePayload(tag.listType, i, i)
+    def writeCompound(self, payload=None, **kw):
+        for t in payload.values():
+            self.write(t)
+        # write the end tag
+        self.writeByte(0)
+    # numeric types
+    def writeByte(self, payload=None, **kw):
+        self.file.write( payload.to_bytes(1, 'big', signed=True) )
+    def writeShort(self, payload=None, **kw):
+        self.file.write( payload.to_bytes(2, 'big', signed=True) )
+    def writeInt(self, payload=None, **kw):
+        self.file.write( payload.to_bytes(4, 'big', signed=True) )
+    def writeLong(self, payload=None, **kw):
+        self.file.write( payload.to_bytes(8, 'big', signed=True) )
+    def writeFloat(self, payload=None, **kw):
+        self.file.write( struct.pack('>f', payload) )
+    def writeDouble(self, payload=None, **kw):
+        self.file.write( struct.pack('>d', payload) )
+    def writeString(self, payload=None, **kw):
+        # all nbt string lengths are defined by a short, not null terminator
+        self.writeShort(len(payload))
+        self.file.write( payload.encode('utf-8') )
 
 class NbtReader:
     payloads = {
@@ -71,7 +272,7 @@ class NbtReader:
     def __init__(self, stream):
         self.file = stream
         self.root = None
-    def parse(self):
+    def read(self):
         self.root = self.readTag()
         return self.root
     def readTag(self):
@@ -79,11 +280,10 @@ class NbtReader:
         if t.id == Tag.TAG_End:
             return t
         
-        try:
+        if t.id == Tag.TAG_List:
+            t.listType, t.value = self.parsePayload(t.id)
+        else:
             t.value = self.parsePayload(t.id)
-        except KeyError:
-            raise NotImplementedError('Encountered unkown tag id:',
-                                      t.id, t.name)
 
         return t
     def readTagHeader(self):
@@ -93,7 +293,12 @@ class NbtReader:
         t = Tag(id, self.readString(self.readShort()))
         return t
     def parsePayload(self, id):
-        return getattr(self, NbtReader.payloads[id])()
+        """ -> python value of payload or (list type, value of payload)"""
+        try:
+            return getattr(self, NbtReader.payloads[id])()
+        except KeyError:
+            # .payloads[...] will throw the error, not getattr
+            raise NotImplementedError('Encountered unkown tag id: ' + id)
     def readCompound(self):
         result = {}
         while True:
@@ -108,7 +313,7 @@ class NbtReader:
         value = []
         for i in range(listLength):
             value.append(self.parsePayload(listType))
-        return value
+        return listType, value
     def readByteArray(self):
         size = self.readInt()
         value = []
@@ -127,20 +332,17 @@ class NbtReader:
     def readFloat(self):
         return struct.unpack('>f', self.file.read(4))[0]
     def readLong(self):
-        return int.from_bytes(self.file.read(8), byteorder='big')
+        return int.from_bytes(self.file.read(8), 'big', signed=True)
     def readInt(self):
-        return int.from_bytes(self.file.read(4), byteorder='big')
+        return int.from_bytes(self.file.read(4), 'big', signed=True)
     def readShort(self):
-        return int.from_bytes(self.file.read(2), byteorder='big')
+        return int.from_bytes(self.file.read(2), 'big', signed=True)
     def readByte(self):
-        return int.from_bytes(self.file.read(1), byteorder='big')
+        return int.from_bytes(self.file.read(1), 'big', signed=True)
     def readString(self, length=None):
         if length is None:
             return self.readString(self.readShort())
         s = self.file.read(length)
         s = s.decode('utf-8')
         return s
-
-if __name__ == "__main__":
-    with openNbt('demo/level.dat', gzipped=True) as file:
-        NbtReader(file).parse().prettyprint()
+    
