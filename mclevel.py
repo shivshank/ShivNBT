@@ -15,6 +15,7 @@ import time
 import zlib
 import nbt
 import io
+import math
 
 def readRegionHeader(regionX, regionZ, stream):
     # stream offset = 4 * ((x & 31) + (z & 31) * 32)
@@ -95,21 +96,24 @@ def parseChunkNbt(root):
     return chunk
 
 def writeChunk(tag, offset, regionFile):
-    # TODO: update chunk header offset/size, right now we just pray!
+    # update the header
+    x, z = tag.value['Level'].value['xPos'].value, tag.value['Level'].value['zPos'].value
+    regionFile.seek(4 * ((x & 31) + (z & 31) * 32))
+    size = int.from_bytes(regionFile.read(1), 'big')
     b = io.BytesIO()
     writer = nbt.NbtWriter(b)
     writer.write(tag)
     b.seek(0)
     data = b.read()
+    zipped = zlib.compress(data)
     # seek to the start of the chunk in the region file
-    regionFile.seek(offset * 4096)
+    regionFile.seek(offset * 4096, 0)
     # write the length of this chunks data + 1 for compression type
-    regionFile.write((len(data) + 1).to_bytes(3, 'big', signed=True))
+    regionFile.write((len(zipped) + 1).to_bytes(4, 'big', signed=True))
     # we are using compression type 2, zlib
     regionFile.write(b'\x02')
     # write the chunk data!
-    data = zlib.compress(data)
-    regionFile.write(data)
+    regionFile.write(zipped)
 
 def getChunkNbt(chunk):
     pass
@@ -176,7 +180,7 @@ class RegionHeader:
         try:
             return self.chunks[self._toChunkId(x, z)]
         except KeyError:
-            raise ValueError('Chunk has not been generated yet.')
+            return None
     def _toChunkId(self, x, z):
         return x + z * 32
 
