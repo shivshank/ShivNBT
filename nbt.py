@@ -125,11 +125,22 @@ class Tag:
         TAG_Int_Array: 'TAG_Int_Array'
     }
     
-    def __init__(self, id, name, val=None):
+    def __init__(self, id, name, val=None, listType=None):
+        if type(id) is str:
+            id = getattr(Tag, id)
         self.id = id
         self.name = name
-        self.value = val
-        self.listType = None
+        self.value = self.handleInitialValue(val)
+        self.listType = listType
+    def handleInitialValue(self, val):
+        """ Convenience method for creating tags programmatically.
+            If this is a compound tag and val is a list, val will be converted
+            into a dict.
+        """
+        if self.id != Tag.TAG_Compound or type(val) is not list:
+            return val
+
+        return dict((i.name, i) for i in val)
     def pythonify(self):
         if self.id == Tag.TAG_List:
             return self._pythonifyPayload(self.value)
