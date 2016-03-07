@@ -163,8 +163,8 @@ def sectionToNbt(y, section):
                 halfbyteShift = 4 if index & 1 else 0
                 b = section[index]
                 blocks.append(b.id & 0xFF)
-                add[index//2] = (b.id >> 8) << halfbyteShift
-                data[index//2] = (b.data & 0x0F) << halfbyteShift
+                add[index//2] = add[index//2] & ((b.id >> 8) << halfbyteShift)
+                data[index//2] = data[index//2] & ((b.data & 0x0F) << halfbyteShift)
                 index += 1
     if sum(add) == 0:
         del root['Add']
