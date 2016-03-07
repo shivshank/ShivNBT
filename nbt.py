@@ -185,6 +185,8 @@ class Tag:
             else:
                 out.append(i)
         return out
+    def __getitem__(self, key):
+        return self.value[key]
 
 class NbtWriter:
     payloads = {
