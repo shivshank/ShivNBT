@@ -24,13 +24,14 @@ class MinecraftWorld:
     def _dropRegion(self):
         pass
         
-def readChunk(offset, size, stream):
+def readChunk(x, z, stream, regionHeader):
     """ Returns the NBT Tag describing a chunk at offset within the region file
     """
+    offset, size, timestamp = regionHeader.getChunkInfo(x, z)
     # offset and size are in terms of 4096kib
     stream.seek(offset * 4096, 0)
-    # the length in bytes of the chunk
-    # (note that all the chunks are 4096byte aligned)
+    # the length in bytes of the remaining chunk data
+    # (note that all the chunks are padded to be 4096 byte aligned)
     length = int.from_bytes(stream.read(4), 'big')
     compressionType = int.from_bytes(stream.read(1), 'big')
     if compressionType == 2:
