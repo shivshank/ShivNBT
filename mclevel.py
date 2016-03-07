@@ -73,10 +73,10 @@ def writeChunk(tag, regionFile, regionHeader):
     # mark the current time on the chunk
     regionHeader.markUpdate(x, z)
 
-def parseChunkNbt(root):
+def nbtToChunk(root):
     """ Create a chunk from an NBT tag. """
-    chunkDict = root.pythonify()
-    cx, cz = chunkDict['Level']['xPos'], chunkDict['Level']['zPos']
+    chunkDict = root.pythonify()['Level']
+    cx, cz = chunkDict['xPos'], chunkDict['zPos']
     
     # initialize the chunk object
     chunk = Chunk(cx, cz,
@@ -85,7 +85,7 @@ def parseChunkNbt(root):
                   lightPopulated=chunkDict['LightPopulated'],
                   lastUpdate=chunkDict['LastUpdate'])
 
-    for section in chunkDict['Level']['Sections']:
+    for section in chunkDict['Sections']:
         blocks = []
         sectionY = section['Y']
         # 8 bits per block
