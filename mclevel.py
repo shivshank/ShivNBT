@@ -118,24 +118,59 @@ def nbtToChunk(root):
 
 def chunkToNbt(chunk):
     root = nbt.Tag('TAG_Compound', '', [
-        nbt.Tag("TAG_Int", "DataVersion", 0),
+        nbt.Tag("TAG_Int", "DataVersion", 169),
         nbt.Tag("TAG_Compound", "Level", [
-            nbt.Tag("TAG_Int", "xPos", 0),
-            nbt.Tag("TAG_Int", "zPos", 0),
-            nbt.Tag("TAG_Long", "LastUpdate", 0),
-            nbt.Tag("TAG_Byte", "LightPopulated", 0),
-            nbt.Tag("TAG_Byte", "TerrainPopulated", 0),
+            nbt.Tag("TAG_Int", "xPos", chunk.x),
+            nbt.Tag("TAG_Int", "zPos", chunk.z),
+            nbt.Tag("TAG_Long", "LastUpdate", chunk.lastUpdate),
+            nbt.Tag("TAG_Byte", "LightPopulated", chunk.lightPopulated),
+            nbt.Tag("TAG_Byte", "TerrainPopulated", chunk.terrainPopulated),
             nbt.Tag("TAG_Byte", "V", 1),
-            nbt.Tag("TAG_Byte", "InhabitedTime", 0),
-            nbt.Tag("TAG_Int_Array", "HeightMap", []),
-            nbt.Tag("TAG_List", "Sections", [], "TAG_Compound"),
-            nbt.Tag("TAG_List", "Entities", [], "TAG_End"),
-            nbt.Tag("TAG_List", "TileEntities", [], "TAG_End")
+            nbt.Tag("TAG_Byte", "InhabitedTime", chunk.inhabitedTime),
+            #nbt.Tag("TAG_Int_Array", "HeightMap", []),
+            nbt.Tag("TAG_List", "Sections", [], nbt.Tag.TAG_Compound),
+            nbt.Tag("TAG_List", "Entities", [], nbt.Tag.TAG_End),
+            nbt.Tag("TAG_List", "TileEntities", [], nbt.Tag.TAG_End)
         ])
     ])
     # Things that may or may not exist:
     # Biomes, TileTicks
-    
+    sects = len(chunk.sections.keys())
+    if sects == 0:
+        root['Level']['Sections'].listType = nbt.Tag.TAG_End
+    else:
+        for k, v in chunk.sections.items():
+            root['Level']['Sections'].value.append(sectionToNbt(k, v))
+
+    return root
+
+def sectionToNbt(y, section):
+    # the root is the payload of a compound tag, which is a dict
+    root = dict((i.name, i) for i in [
+        nbt.Tag("TAG_Byte", "Y", y),
+        nbt.Tag("TAG_Byte_Array", "Blocks", []),
+        nbt.Tag("TAG_Byte_Array", "Add", [0 for i in range(2048)]),
+        nbt.Tag("TAG_Byte_Array", "Data", [0 for i in range(2048)])
+    ])
+    blocks = root["Blocks"].value
+    add = root["Add"].value
+    data = root["Data"].value
+    index = 0
+    for y in range(16):
+        for z in range(16):
+            for x in range(16):
+                # even blocks use the second half of the halfbytes
+                halfbyteShift = 4 if index & 1 else 0
+                b = section[index]
+                blocks.append(b.id & 0xFF)
+                add[index//2] = (b.id >> 8) << halfbyteShift
+                data[index//2] = (b.data & 0x0F) << halfbyteShift
+                index += 1
+    if sum(add) == 0:
+        del root['Add']
+
+    return root
+
 class Chunk:
     def __init__(self, xPos, zPos, **kw):
         """ Create an empty chunk. """
