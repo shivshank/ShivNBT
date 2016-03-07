@@ -73,9 +73,17 @@ def writeChunk(tag, regionFile, regionHeader):
     regionHeader.markUpdate(x, z)
 
 def parseChunkNbt(root):
+    """ Create a chunk from an NBT tag. """
     chunkDict = root.pythonify()
     cx, cz = chunkDict['Level']['xPos'], chunkDict['Level']['zPos']
-    chunk = Chunk(cx, cz)
+    
+    # initialize the chunk object
+    chunk = Chunk(cx, cz,
+                  terrainPopulated=chunkDict['TerrainPopulated'],
+                  inhabitedTime=chunkDict['InhabitedTime'],
+                  lightPopulated=chunkDict['LightPopulated'],
+                  lastUpdate=chunkDict['LastUpdate'])
+
     for section in chunkDict['Level']['Sections']:
         blocks = []
         sectionY = section['Y']
@@ -107,17 +115,44 @@ def parseChunkNbt(root):
 
     return chunk
 
+def chunkToNbt(chunk):
+    root = nbt.Tag('TAG_Compound', '', [
+        nbt.Tag("TAG_Int", "DataVersion", 0),
+        nbt.Tag("TAG_Compound", "Level", [
+            nbt.Tag("TAG_Int", "xPos", 0),
+            nbt.Tag("TAG_Int", "zPos", 0),
+            nbt.Tag("TAG_Long", "LastUpdate", 0),
+            nbt.Tag("TAG_Byte", "LightPopulated", 0),
+            nbt.Tag("TAG_Byte", "TerrainPopulated", 0),
+            nbt.Tag("TAG_Byte", "V", 1),
+            nbt.Tag("TAG_Byte", "InhabitedTime", 0),
+            nbt.Tag("TAG_Int_Array", "HeightMap", []),
+            nbt.Tag("TAG_List", "Sections", [], "TAG_Compound"),
+            nbt.Tag("TAG_List", "Entities", [], "TAG_End"),
+            nbt.Tag("TAG_List", "TileEntities", [], "TAG_End")
+        ])
+    ])
+    # Things that may or may not exist:
+    # Biomes, TileTicks
+    
 class Chunk:
-    def __init__(self, xPos, zPos, inhabitedTime=0):
+    def __init__(self, xPos, zPos, **kw):
+        """ Create an empty chunk. """
         self.sections = {}
-        self.biomes = []
-        self.heightmap = []
-        self.inhabitedTime = inhabitedTime
+        self.topSection = 0
+        self.biomes = None
+        self.heightmap = None
         self.x = xPos
         self.z = zPos
-    def addSection(self, y, blocks):
+        
+        self.inhabitedTime = kw.get('inhabitedTime', 0)
+        self.terrainPopulated = kw.get('terrainPopulated', 1)
+        self.lightPopulated = kw.get('lightPopulated', 0)
+        self.lastUpdate = kw.get('lastUpdate', 0)
+    def addSection(self, sectionY, blocks):
         # blocks are ordered YZX
-        self.sections[y] = blocks
+        self.sections[sectionY] = blocks
+        self.topSection = max(self.topSection, sectionY)
     def getBlock(self, x, y, z):
         if x > 15 or x < 0 or y > 255 or y < 0 or z > 15 or z < 0:
             raise ValueError('getBlock takes local chunk block coordinates')
@@ -127,7 +162,20 @@ class Chunk:
         except KeyError:
             # the section does not exist
             return None
+    def setBlock(x, y, z, b):
+        index = (y & 15)*256 + z*16 + x
+        section = self.sections.get(y//16, None)
+        if section is None:
+            self._initializeSection(y//16)
+        self.sections[y//16][index]
+    def _initializeSection(y):
+        arr = []
+        for i in range(4096):
+            arr.append(Block(0, 0))
+        self.sections[y] = arr
+        self.topSection = max(self.topSection, y)
     def getAsciiYCrossSection(self, y):
+        """ A marginally useful debugging/novelty method. :)"""
         out = []
         for z in range(16):
             out.append([])
