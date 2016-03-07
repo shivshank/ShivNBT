@@ -1,14 +1,5 @@
 """ 
     Here are some facilities for parsing Minecraft level files.
-
-    Minecraft (as release 1.9, 16/03/05) uses region files to specify the level.
-
-    The region file consists of a header (the Region file format) and Chunk
-    data, which is in the Anvil file format.
-
-    Each region file consists of an 8kib header (aka the region file). The first
-    4096 bytes are location information and the second 4096 bytes are
-    timestamps.
 """
 import os.path
 import time
@@ -17,29 +8,22 @@ import nbt
 import io
 import math
 
-def readRegionHeader(regionX, regionZ, stream):
-    # stream offset = 4 * ((x & 31) + (z & 31) * 32)
-    # this implies that every 32 bytes increments the z coordinate
-    # timestamp is at location (above formula) + 4096
-    x = 0
-    z = 0
-    header = RegionHeader(regionX, regionZ)
-    for chunkId in range(1024):
-        pos = stream.tell()
-        stream.seek(pos + 4096, 0)
-        timestamp = int.from_bytes(stream.read(4), 'big')
-        stream.seek(pos, 0)
-        offset = int.from_bytes(stream.read(3), 'big')
-        size = int.from_bytes(stream.read(1), 'big')
-        # the chunk doesn't exist when both of these values are zero
-        if offset != 0 or size != 0:
-            header.addChunk(x, z, offset, size, timestamp)
-        x += 1
-        if x == 32:
-            x = 0
-            z += 1
-    return header
-
+class MinecraftWorld:
+    def __init__(self, savePath):
+        self.path = savePath
+        self.regionCache = {}
+        self.chunkCache = {}
+        self.cachedChunks = 0
+        self.cachedRegions = 0
+    def getBlock(self):
+        pass
+    def getChunk(self, x, z):
+        pass
+    def _dropChunk(self):
+        pass
+    def _dropRegion(self):
+        pass
+        
 def readChunk(offset, size, stream):
     """ Returns the NBT Tag describing a chunk at offset within the region file
     """
@@ -59,6 +43,34 @@ def readChunk(offset, size, stream):
 
     reader = nbt.NbtReader(unzipped)
     return reader.read()
+
+def writeChunk(tag, regionFile, regionHeader):
+    x, z = tag['Level']['xPos'].value, tag['Level']['zPos'].value
+    offset, size, timestamp = regionHeader.getChunkInfo(x, z)
+    b = io.BytesIO()
+    writer = nbt.NbtWriter(b)
+    writer.write(tag)
+    b.seek(0)
+    data = b.read()
+    zipped = zlib.compress(data)
+    newsize = math.ceil((len(zipped) + 4 + 1)/4096)
+    if newsize > size:
+        print('writeChunk: Chunk size increase occured')
+        # we gained at least one second, so transpose all the chunks in the file
+        regionHeader.resize(x, z, newsize)
+    # seek to the start of the chunk in the region file
+    regionFile.seek(offset * 4096, 0)
+    # write the length of this chunks data + 1 for compression type
+    regionFile.write((len(zipped) + 1).to_bytes(4, 'big', signed=True))
+    # we are using compression type 2, zlib
+    regionFile.write(b'\x02')
+    # write the chunk data!
+    regionFile.write(zipped)
+    remaining = 4096 - regionFile.tell() & 4095
+    # pad to 4096
+    regionFile.write(b'\x00'*remaining)
+    # mark the current time on the chunk
+    regionHeader.markUpdate(x, z)
 
 def parseChunkNbt(root):
     chunkDict = root.pythonify()
@@ -94,29 +106,6 @@ def parseChunkNbt(root):
         chunk.addSection(sectionY, blocks)
 
     return chunk
-
-def writeChunk(tag, offset, regionFile):
-    # update the header
-    x, z = tag.value['Level'].value['xPos'].value, tag.value['Level'].value['zPos'].value
-    regionFile.seek(4 * ((x & 31) + (z & 31) * 32))
-    size = int.from_bytes(regionFile.read(1), 'big')
-    b = io.BytesIO()
-    writer = nbt.NbtWriter(b)
-    writer.write(tag)
-    b.seek(0)
-    data = b.read()
-    zipped = zlib.compress(data)
-    # seek to the start of the chunk in the region file
-    regionFile.seek(offset * 4096, 0)
-    # write the length of this chunks data + 1 for compression type
-    regionFile.write((len(zipped) + 1).to_bytes(4, 'big', signed=True))
-    # we are using compression type 2, zlib
-    regionFile.write(b'\x02')
-    # write the chunk data!
-    regionFile.write(zipped)
-
-def getChunkNbt(chunk):
-    pass
 
 class Chunk:
     def __init__(self, xPos, zPos, inhabitedTime=0):
@@ -155,20 +144,14 @@ class Block:
         self.data = data
 
 class RegionHeader:
-    """ Caches which chunks are generated in this region.
-        Also stores information on how to locate a chunk in the region file and
-        how to find it in the region file.
+    """ Wraps a .mca Anvil world file.
+        Reads and writes directly from the buffer/stream/file.
     """
-    def __init__(self, regionX, regionZ):
-        self.chunks = {}
-        self.count = 0
+    def __init__(self, regionX, regionZ, stream):
+        self.file = stream
         self.x = regionX
         self.z = regionZ
-    def addChunk(self, localX, localZ, offset, size, epochTimestamp):
-        timestamp = time.localtime(epochTimestamp)
-        self.chunks[self._toChunkId(localX, localZ)] = (offset, size, timestamp)
-        self.count += 1
-    def getChunk(self, x, z):
+    def getChunkInfo(self, x, z):
         """ Chunks are always in global chunk coordinates """
         # convert global coords to internal coords
         x -= self.x * 32
@@ -177,28 +160,33 @@ class RegionHeader:
             raise ValueError('Chunk is not in region ('
                            + str(self.x) + ', ' + str(self.z) + ')')
 
-        try:
-            return self.chunks[self._toChunkId(x, z)]
-        except KeyError:
-            return None
+        pos = 4 * ((x & 31) + (z & 31) * 32)
+        self.file.seek(pos)
+        # I don't think it makes sense for any of these values to be signed
+        location = int.from_bytes(self.file.read(3), 'big', signed=False)
+        size = int.from_bytes(self.file.read(1), 'big', signed=False)
+        self.file.seek(pos + 4096)
+        timestamp = int.from_bytes(self.file.read(4), 'big', signed=False)
+        return location, size, timestamp
     def _toChunkId(self, x, z):
         return x + z * 32
-
-class MinecraftWorld:
-    def __init__(self, savePath):
-        self.path = savePath
-        self.regionCache = {}
-        self.chunkCache = {}
-        self.cachedChunks = 0
-        self.cachedRegions = 0
-    def getBlock(self):
-        pass
-    def getChunk(self, x, z):
-        pass
-    def _dropChunk(self):
-        pass
-    def _dropRegion(self):
-        pass
-
+    def countChunks(self):
+        self.file.seek(0)
+        c = 0
+        for i in range(1024):
+            if self.file.read(4) != b'\x00\x00\x00\x00':
+                c += 1
+        return c
+    def markUpdate(self, x, z):
+        pos = 8 * ((x & 31) + (z & 31) * 32)
+        self.file.seek(pos)
+        self.file.write( int(time.time()).to_bytes(4, 'big', signed=False) )
+    def resize(self, x, z, newsize):
+        raise UnsupportedOperationException("Resizing chunks is not done yet.")
+        offset, size, timestamp = self.getChunkInfo(x, z)
+        # update this chunks header
+        
+        # now check every other chunk in the header and offset its location
+        # if it occurs ahead of this chunk
 def getRegionPos(chunkX, chunkZ):
     return (chunkX >> 5, chunkZ >> 5)
