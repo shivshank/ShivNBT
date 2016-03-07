@@ -106,7 +106,7 @@ def parseChunkNbt(root):
                     id = ids[index]
                     # the add tag extends the range of ids
                     if add is not None:
-                        id += add[index//2] & (halfbyte << 8)
+                        id += (add[index//2] & halfbyte) << 8
                     blockData = data[index//2] & halfbyte
                     block = Block(id, blockData)
                     blocks.append(block)
@@ -162,13 +162,13 @@ class Chunk:
         except KeyError:
             # the section does not exist
             return None
-    def setBlock(x, y, z, b):
+    def setBlock(self, x, y, z, b):
         index = (y & 15)*256 + z*16 + x
         section = self.sections.get(y//16, None)
         if section is None:
             self._initializeSection(y//16)
-        self.sections[y//16][index]
-    def _initializeSection(y):
+        self.sections[y//16][index] = b
+    def _initializeSection(self, y):
         arr = []
         for i in range(4096):
             arr.append(Block(0, 0))
