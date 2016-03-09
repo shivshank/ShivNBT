@@ -262,7 +262,8 @@ class RegionHeader:
                 c += 1
         return c
     def markUpdate(self, x, z):
-        pos = 8 * ((x & 31) + (z & 31) * 32)
+        # recall: timestamp is 4096 bytes ahead of offset position
+        pos = 4 * ((x & 31) + (z & 31) * 32) + 4096
         self.file.seek(pos)
         self.file.write( int(time.time()).to_bytes(4, 'big', signed=False) )
     def resize(self, x, z, newsize):
