@@ -225,7 +225,6 @@ class NbtWriter:
         self.safetyMax = safetyMax
     def write(self, tag):
         """ Write tag to the stream (self.file) from stream.tell() onwards """
-        print('writing', tag.name)
         self.writeHeader(tag)
         self.writePayload(tag.id, tag.value, tag)
     def writeHeader(self, tag):
@@ -261,7 +260,6 @@ class NbtWriter:
         self.writeByte(0)
     # numeric types
     def writeByte(self, payload=None, **kw):
-        print(payload)
         self.file.write( payload.to_bytes(1, 'big', signed=True) )
     def writeShort(self, payload=None, **kw):
         self.file.write( payload.to_bytes(2, 'big', signed=True) )
