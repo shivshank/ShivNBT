@@ -61,15 +61,19 @@ def writeChunk(tag, regionFile, regionHeader):
         regionHeader.resize(x, z, newsize)
     # seek to the start of the chunk in the region file
     regionFile.seek(offset * 4096, 0)
-    # write the length of this chunks data + 1 for compression type
-    regionFile.write((len(zipped) + 1).to_bytes(4, 'big', signed=True))
+    # write the length of this chunks data, + 1 for compression type
+    regionFile.write((len(zipped) + 1).to_bytes(4, 'big', signed=False))
     # we are using compression type 2, zlib
     regionFile.write(b'\x02')
     # write the chunk data!
     regionFile.write(zipped)
-    remaining = 4096 - regionFile.tell() & 4095
-    # pad to 4096
+    # pad to multiple of 4096 bytes
+    remaining = 4096 - (regionFile.tell() & 4095)
+    # both of these should be valid ways to compute the required padding
+    assert remaining == 4096 * newsize - len(zipped) - 5
     regionFile.write(b'\x00'*remaining)
+    # make sure we end in the right place
+    assert regionFile.tell() & 4095 == 0
     # mark the current time on the chunk
     regionHeader.markUpdate(x, z)
 
