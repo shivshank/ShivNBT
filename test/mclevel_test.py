@@ -48,8 +48,7 @@ def airChunk(x, z):
     print('# Delete Demo #')
     rx, rz = mclevel.getRegionPos(x, z)
     p = 'nbt/region/r.' + str(rx) + '.' + str(rz) + '.mca'
-    
-    shutil.copy2(p, path.join('gen', path.basename(p)))
+
     c = mclevel.Chunk(x, z)
     c.setBlock(7, 0, 7, mclevel.Block(7, 0))
     c.lightPopulated = 0
@@ -58,6 +57,17 @@ def airChunk(x, z):
         mclevel.writeChunk(mclevel.chunkToNbt(c), file, header,
                            safetyMax=5 * 1024 * 1024)
 
+def seekTest():
+    with open('nbt/region/r.0.0.mca', mode='rb') as file:
+        vFile = io.BytesIO(file.read())
+
+    header = mclevel.RegionHeader(0, 0, vFile)
+    offset, size, timestamp = header.getChunkInfo(0, 0)
+    pos = header.file.tell()
+    header.setChunkInfo(0, 0, offset, size)
+    print('old pos:', pos, '\nnew pos:', header.file.tell())
+
 readIntoJSON(0, 0)
 editDemo()
 airChunk(0, 1)
+seekTest()

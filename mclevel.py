@@ -242,6 +242,17 @@ class Block:
         self.id = id
         self.data = data
 
+# here is a decorator for the RegionHeader class
+# there's probably a better way to write and store this,
+# but I don't know too much about decorators/convention
+def _retainFilePos(func):
+    def f(*args, **kwargs):
+        # args[0] should be the 'self' object
+        pos = args[0].file.tell()
+        res = func(*args, **kwargs)
+        args[0].file.seek(pos)
+    return f
+
 class RegionHeader:
     """ Wraps a .mca Anvil world file.
         Reads and writes directly from the buffer/stream/file.
@@ -259,7 +270,7 @@ class RegionHeader:
             raise ValueError('Chunk is not in region ('
                            + str(self.x) + ', ' + str(self.z) + ')')
 
-        pos = 4 * ((x & 31) + (z & 31) * 32)
+        pos = self._getIndex(x, z)
         self.file.seek(pos)
         # I don't think it makes sense for any of these values to be signed
         location = int.from_bytes(self.file.read(3), 'big', signed=False)
@@ -278,7 +289,7 @@ class RegionHeader:
         return c
     def markUpdate(self, x, z):
         # recall: timestamp is 4096 bytes ahead of offset position
-        pos = 4 * ((x & 31) + (z & 31) * 32) + 4096
+        pos = self._getIndex(x, z) + 4096
         self.file.seek(pos)
         self.file.write( int(time.time()).to_bytes(4, 'big', signed=False) )
     def resize(self, x, z, newsize):
@@ -288,5 +299,21 @@ class RegionHeader:
         
         # now check every other chunk in the header and offset its location
         # if it occurs ahead of this chunk
+    @_retainFilePos
+    def setChunkInfo(self, x, z, newOffset, newSize):
+        pos = self._getIndex(x, z)
+        self.file.seek(pos)
+        self.file.write( newOffset.to_bytes(3, 'big', signed=True) )
+        self.file.write( newSize.to_bytes(1, 'big', signed=True) )
+    @_retainFilePos
+    def _alloc(self, size):
+        return self.file.seek(0, 2)
+    def _getIndex(self, x, z):
+        return 4 * ((x & 31) + (z & 31) * 32)
+    def _pack(self):
+        """ Squashes the file size down, packing the chunks tightly together.
+        """
+        pass
+
 def getRegionPos(chunkX, chunkZ):
     return (chunkX >> 5, chunkZ >> 5)
