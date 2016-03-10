@@ -6,6 +6,14 @@ import nbt
 import mclevel
 import shutil
 
+# this may come in useful in the future
+class DebuggerBytesIO(io.BytesIO):
+    def write(self, *args):
+        super().write(*args)
+        # fail if the buffer grows beyond 10mb, a reasonable size for a
+        # Minecraft region file
+        assert self.tell() < (5 * 1024 * 1024)
+
 def read():
     path = 'nbt\\region\\r.0.0.mca'
     with open(path, mode='rb') as file:
