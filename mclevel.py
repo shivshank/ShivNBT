@@ -129,7 +129,7 @@ def chunkToNbt(chunk):
             nbt.Tag("TAG_Byte", "LightPopulated", chunk.lightPopulated),
             nbt.Tag("TAG_Byte", "TerrainPopulated", chunk.terrainPopulated),
             nbt.Tag("TAG_Byte", "V", 1),
-            nbt.Tag("TAG_Byte", "InhabitedTime", chunk.inhabitedTime),
+            nbt.Tag("TAG_Long", "InhabitedTime", chunk.inhabitedTime),
             #nbt.Tag("TAG_Int_Array", "HeightMap", []),
             nbt.Tag("TAG_List", "Sections", [], nbt.Tag.TAG_Compound),
             nbt.Tag("TAG_List", "Entities", [], nbt.Tag.TAG_End),
