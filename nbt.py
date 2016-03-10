@@ -215,9 +215,17 @@ class NbtWriter:
         Tag.TAG_Int_Array: 'writeIntArray'
     }
     
-    def __init__(self, stream):
+    def __init__(self, stream, safetyMax=None):
+        """
+            stream - the stream to write to
+            safetyMax - max file size in bytes
+            see write payload for more info on safety max
+        """
         self.file = stream
+        self.safetyMax = safetyMax
     def write(self, tag):
+        """ Write tag to the stream (self.file) from stream.tell() onwards """
+        print('writing', tag.name)
         self.writeHeader(tag)
         self.writePayload(tag.id, tag.value, tag)
     def writeHeader(self, tag):
@@ -225,6 +233,9 @@ class NbtWriter:
         self.writeString(tag.name)
     def writePayload(self, id, value, tag=None):
         # use the class variable payloads to select a method
+        if self.safetyMax is not None and self.file.tell() > self.safetyMax:
+            raise ValueError("File object exceeded safe max size, "
+                           + str(self.safetyMax))
         getattr(self, NbtWriter.payloads[id])(payload=value, tag=tag)
     # complex types
     def writeByteArray(self, tag=None, **kw):
@@ -250,6 +261,7 @@ class NbtWriter:
         self.writeByte(0)
     # numeric types
     def writeByte(self, payload=None, **kw):
+        print(payload)
         self.file.write( payload.to_bytes(1, 'big', signed=True) )
     def writeShort(self, payload=None, **kw):
         self.file.write( payload.to_bytes(2, 'big', signed=True) )
