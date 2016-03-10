@@ -1,7 +1,7 @@
 import sys
 import os.path as path
-import shutil
 import io
+import shutil
 # add the parent directory
 sys.path.append(path.dirname(path.dirname(path.realpath(__file__))))
 import nbt
@@ -13,31 +13,51 @@ def readIntoJSON(x, z):
     path = 'nbt/region/r.' + str(rx) + '.' + str(rz) + '.mca'
     with open(path, mode='rb') as file:
         header = mclevel.RegionHeader(rx, rz, file)
-        offset, size, timestamp = header.getChunkInfo(x, z)
         chunkTag = mclevel.readChunk(x, z, file, header)
     chunk = mclevel.nbtToChunk(chunkTag)
-    # generate examples of the chunk
     nbt.tagToJson('json', 'chunk.' + str(x) + '.' + str(z) + '.nbt', chunkTag)
     print('block 0, 70, 0 is id', chunk.getBlock(0, 70, 0).id)
     
 def editDemo():
     """Set block 0, 70, 0 to bedrock (id:7)"""
-    # make sure we are operating on a clean (noncorrupt) file
     print('# Editing demo #')
-    shutil.copy2('nbt/region/r.0.0.mca', 'gen/r.0.0.mca')
     
     vFile = io.BytesIO()
-    with open('gen/r.0.0.mca', mode='rb') as file:
-        print('Copying file to memory...')
+    with open('nbt/region/r.0.0.mca', mode='rb') as file:
+        print('\tCopying file to memory...')
         vFile.write(file.read())
     print('\tCopy successful, copied', len(vFile.getbuffer()), 'bytes')
     
     header = mclevel.RegionHeader(0, 0, vFile)
     chunk = mclevel.nbtToChunk(mclevel.readChunk(0, 0, vFile, header))
-    print('block 0, 70, 0 is block id', chunk.getBlock(0, 70, 0).id)
+    chunk.lightPopulated = 0
+    print('\tblock 0, 70, 0 is block id', chunk.getBlock(0, 70, 0).id)
+    print('\tchanging block')
+    chunk.setBlock(0, 70, 0, mclevel.Block(7, 0))
+    print('\tblock 0, 70, 0 is block id', chunk.getBlock(0, 70, 0).id)
     mclevel.writeChunk(mclevel.chunkToNbt(chunk), vFile, header,
                        safetyMax=5 * 1024 * 1024)
+    print('Virtual file is', len(vFile.getbuffer()),
+          'bytes. Write to disk (y/n)?')
+    if input().startswith('y'):
+        with open('gen/r.0.0.mca', mode='wb') as file:
+            vFile.seek(0)
+            file.write(vFile.read())
+
+def airChunk(x, z):
+    print('# Delete Demo #')
+    rx, rz = mclevel.getRegionPos(x, z)
+    p = 'nbt/region/r.' + str(rx) + '.' + str(rz) + '.mca'
+    
+    shutil.copy2(p, path.join('gen', path.basename(p)))
+    c = mclevel.Chunk(x, z)
+    c.setBlock(7, 0, 7, mclevel.Block(7, 0))
+    c.lightPopulated = 0
+    with open(path.join('gen', path.basename(p)), mode='r+b') as file:
+        header = mclevel.RegionHeader(rx, rz, file)
+        mclevel.writeChunk(mclevel.chunkToNbt(c), file, header,
+                           safetyMax=5 * 1024 * 1024)
 
 readIntoJSON(0, 0)
 editDemo()
-# TODO: make it work. write now it corrupts the file...
+airChunk(0, 1)
