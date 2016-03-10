@@ -45,14 +45,13 @@ def readChunk(x, z, stream, regionHeader):
     reader = nbt.NbtReader(unzipped)
     return reader.read()
 
-def writeChunk(tag, regionFile, regionHeader):
+def writeChunk(tag, regionFile, regionHeader, safetyMax=None):
     x, z = tag['Level']['xPos'].value, tag['Level']['zPos'].value
     offset, size, timestamp = regionHeader.getChunkInfo(x, z)
-    b = io.BytesIO()
-    writer = nbt.NbtWriter(b)
+    writer = nbt.NbtWriter(io.BytesIO(), safetyMax=safetyMax)
     writer.write(tag)
-    b.seek(0)
-    data = b.read()
+    writer.file.seek(0)
+    data = writer.file.read()
     zipped = zlib.compress(data)
     newsize = math.ceil((len(zipped) + 4 + 1)/4096)
     if newsize > size:
@@ -144,11 +143,11 @@ def chunkToNbt(chunk):
         root['Level']['Sections'].listType = nbt.Tag.TAG_End
     else:
         for k, v in chunk.sections.items():
-            root['Level']['Sections'].value.append(sectionToNbt(k, v))
+            root['Level']['Sections'].value.append(_sectionToNbt(k, v))
 
     return root
 
-def sectionToNbt(y, section):
+def _sectionToNbt(y, section):
     # the root is the payload of a compound tag, which is a dict
     root = dict((i.name, i) for i in [
         nbt.Tag("TAG_Byte", "Y", y),
