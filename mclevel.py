@@ -87,7 +87,7 @@ def nbtToChunk(root):
                   inhabitedTime=chunkDict['InhabitedTime'],
                   lightPopulated=chunkDict['LightPopulated'],
                   lastUpdate=chunkDict['LastUpdate'])
-
+    
     for section in chunkDict['Sections']:
         blocks = []
         sectionY = section['Y']
@@ -130,7 +130,7 @@ def chunkToNbt(chunk):
             nbt.Tag("TAG_Byte", "TerrainPopulated", chunk.terrainPopulated),
             nbt.Tag("TAG_Byte", "V", 1),
             nbt.Tag("TAG_Long", "InhabitedTime", chunk.inhabitedTime),
-            #nbt.Tag("TAG_Int_Array", "HeightMap", []),
+            nbt.Tag("TAG_Int_Array", "HeightMap", chunk.genHeightmap()),
             nbt.Tag("TAG_List", "Sections", [], nbt.Tag.TAG_Compound),
             nbt.Tag("TAG_List", "Entities", [], nbt.Tag.TAG_End),
             nbt.Tag("TAG_List", "TileEntities", [], nbt.Tag.TAG_End)
@@ -153,7 +153,9 @@ def _sectionToNbt(y, section):
         nbt.Tag("TAG_Byte", "Y", y),
         nbt.Tag("TAG_Byte_Array", "Blocks", []),
         nbt.Tag("TAG_Byte_Array", "Add", [0 for i in range(2048)]),
-        nbt.Tag("TAG_Byte_Array", "Data", [0 for i in range(2048)])
+        nbt.Tag("TAG_Byte_Array", "Data", [0 for i in range(2048)]),
+        nbt.Tag("TAG_Byte_Array", "SkyLight", [0 for i in range(2048)]),
+        nbt.Tag("TAG_Byte_Array", "BlockLight", [0 for i in range(2048)])
     ])
     blocks = root["Blocks"].value
     add = root["Add"].value
@@ -224,6 +226,16 @@ class Chunk:
                 out[z].append(b)
             out[z] = ' | '.join(out[z])
         return '\n'.join(out)
+    def genHeightmap(self):
+        self.heightmap = [0 for i in range(256)]
+        for z in range(16):
+            for x in range(16):
+                for y in range(255, -1, -1):
+                    b = self.getBlock(x, y, z)
+                    if b is not None and b.id != 0:
+                        self.heightmap[z*16 + x] = y
+                        break
+        return self.heightmap
 
 class Block:
     def __init__(self, id, data):
