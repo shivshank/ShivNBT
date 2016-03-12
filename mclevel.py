@@ -25,9 +25,13 @@ class MinecraftWorld:
         pass
         
 def readChunk(x, z, stream, regionHeader):
-    """ Returns the NBT Tag describing a chunk at offset within the region file
+    """ Returns the NBT Tag describing a chunk at offset within the region file.
+        If the chunk does not exist, returns None.
     """
     offset, size, timestamp = regionHeader.getChunkInfo(x, z)
+    if offset is None:
+        return None
+
     # offset and size are in terms of 4096kib
     stream.seek(offset * 4096, 0)
     # the length in bytes of the remaining chunk data
@@ -54,10 +58,11 @@ def writeChunk(tag, regionFile, regionHeader, safetyMax=None):
     data = writer.file.read()
     zipped = zlib.compress(data)
     newsize = math.ceil((len(zipped) + 4 + 1)/4096)
-    if newsize > size:
-        print('writeChunk: Chunk size increase occured')
-        # we gained at least one second, so transpose all the chunks in the file
+    if newsize != size:
+        print('writeChunk: Chunk resize occured')
         regionHeader.resize(x, z, newsize)
+    # re-obtain the offset in case it has changed
+    offset, size, timestamp = regionHeader.getChunkInfo(x, z)
     # seek to the start of the chunk in the region file
     regionFile.seek(offset * 4096, 0)
     # write the length of this chunks data, + 1 for compression type
@@ -262,6 +267,7 @@ class RegionHeader:
         self.file = stream
         self.x = regionX
         self.z = regionZ
+    @_retainFilePos
     def getChunkInfo(self, x, z):
         """ Chunks are always in global chunk coordinates """
         # convert global coords to internal coords
@@ -276,11 +282,16 @@ class RegionHeader:
         # I don't think it makes sense for any of these values to be signed
         location = int.from_bytes(self.file.read(3), 'big', signed=False)
         size = int.from_bytes(self.file.read(1), 'big', signed=False)
+        
+        if location == 0 and size == 0:
+            return None, None, None
+
         self.file.seek(pos + 4096)
         timestamp = int.from_bytes(self.file.read(4), 'big', signed=False)
         return location, size, timestamp
     def _toChunkId(self, x, z):
         return x + z * 32
+    @_retainFilePos
     def countChunks(self):
         self.file.seek(0)
         c = 0
@@ -288,11 +299,22 @@ class RegionHeader:
             if self.file.read(4) != b'\x00\x00\x00\x00':
                 c += 1
         return c
+    @_retainFilePos
+    def countSectors(self):
+        self.file.seek(0)
+        s = 0
+        for i in range(1024):
+            nxt = self.file.read(4)
+            if nxt != b'\x00\x00\x00\x00':
+                s += nxt[-1]
+        return s
+    @_retainFilePos
     def markUpdate(self, x, z):
         # recall: timestamp is 4096 bytes ahead of offset position
         pos = self._getIndex(x, z) + 4096
         self.file.seek(pos)
         self.file.write( int(time.time()).to_bytes(4, 'big', signed=False) )
+    @_retainFilePos
     def resize(self, x, z, newsize):
         raise UnsupportedOperationException("Resizing chunks is not done yet.")
         offset, size, timestamp = self.getChunkInfo(x, z)
@@ -311,6 +333,7 @@ class RegionHeader:
         return self.file.seek(0, 2)
     def _getIndex(self, x, z):
         return 4 * ((x & 31) + (z & 31) * 32)
+    @_retainFilePos
     def _pack(self):
         """ Squashes the file size down, packing the chunks tightly together.
         """
