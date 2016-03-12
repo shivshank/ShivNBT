@@ -364,6 +364,23 @@ class RegionHeader:
         """ Squashes the file size down, packing the chunks tightly together.
         """
         pass
+    @_retainFilePos(fileAttr='file')
+    def findHoles(self):
+        """ Here's a fun analysis method! Finds the "holes" in the file. """
+        self.file.seek(0, 2)
+        fileSize = self.file.tell()
+        # all files should be 4096 byte-aligned
+        assert math.floor(fileSize/4096) == fileSize//4096
+        fileSize //= 4096
+        # it's probably faster to remove indices from a set
+        holes = set(i for i in range(2, fileSize))
+        self.file.seek(0)
+        for i in range(1024):
+            location = int.from_bytes(self.file.read(3), 'big', signed=False)
+            size = int.from_bytes(self.file.read(1), 'big', signed=False)
+            for j in range(location, location+size):
+                holes.remove(j)
+        return holes
 
 def getRegionPos(chunkX, chunkZ):
     return (chunkX >> 5, chunkZ >> 5)
