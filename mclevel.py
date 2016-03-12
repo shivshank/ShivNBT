@@ -304,13 +304,35 @@ class RegionHeader:
         self.file.seek(pos)
         self.file.write( int(time.time()).to_bytes(4, 'big', signed=False) )
     @_retainFilePos(fileAttr='file')
-    def resize(self, x, z, newsize):
-        raise UnsupportedOperationException("Resizing chunks is not done yet.")
+    def resize(self, x, z, newSize):
         offset, size, timestamp = self.getChunkInfo(x, z)
-        # update this chunks header
-        
-        # now check every other chunk in the header and offset its location
-        # if it occurs ahead of this chunk
+        if size == newSize:
+            return
+        if newSize < size:
+            self.setChunkInfo(x, z, offset, newSize)
+            # if we shrunk, zero out the old space
+            dif = newSize - size
+            self.file.seek(4096 * (offset + newSize))
+            self.file.write(b'\x00'*dif)
+            return
+        # make it look like this chunk's space is not taken
+        # (_isFree will otherwise tell us that it is taken since this chunk uses
+        #  it)
+        self.setChunkInfo(x, z, 0, 0)
+        # do we need to change the offset or can we just expand it?
+        if self._isFree(*range(offset, offset+newSize)):
+            self.setChunkInfo(x, z, offset, newSize)
+            return
+        # we must reallocate this chunk...
+        newOffset = self._alloc(newSize)
+        self.setChunkInfo(x, z, newOffset, newSize)
+        # grab the old data and set it to zero
+        # (setting it to zero is probably unnecessary, but who cares)
+        self.file.seek(offset * 4096)
+        data = self.file.read(size)
+        self.file.write(b'\x00'*size)
+        self.file.seek(newOffset)
+        self.file.write(data)
     @_retainFilePos(fileAttr='file')
     def setChunkInfo(self, x, z, newOffset, newSize):
         pos = self._getIndex(x, z)
@@ -324,6 +346,19 @@ class RegionHeader:
         return pos
     def _getIndex(self, x, z):
         return 4 * ((x & 31) + (z & 31) * 32)
+    @_retainFilePos(fileAttr='file')
+    def _isFree(self, *sectors):
+        """ Brute force check if each sector in sectors is free """
+        if 0 in sectors or 1 in sectors:
+            raise ValueError("Sectors 0 and 1 are reserved for the header")
+        self.file.seek(0)
+        for i in range(1024):
+            location = int.from_bytes(self.file.read(3), 'big', signed=False)
+            size = int.from_bytes(self.file.read(1), 'big', signed=False)
+            for j in range(location, location+size):
+                if j in sectors:
+                    return False
+        return True
     @_retainFilePos(fileAttr='file')
     def _pack(self):
         """ Squashes the file size down, packing the chunks tightly together.
