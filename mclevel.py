@@ -318,7 +318,9 @@ class RegionHeader:
         self.file.write( newSize.to_bytes(1, 'big', signed=True) )
     @_retainFilePos(fileAttr='file')
     def _alloc(self, size):
-        return self.file.seek(0, 2)
+        self.file.seek(0, 2)
+        pos = self.file.tell()
+        return pos
     def _getIndex(self, x, z):
         return 4 * ((x & 31) + (z & 31) * 32)
     @_retainFilePos(fileAttr='file')
