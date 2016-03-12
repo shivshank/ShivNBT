@@ -251,6 +251,7 @@ def _retainFilePos(func):
         pos = args[0].file.tell()
         res = func(*args, **kwargs)
         args[0].file.seek(pos)
+        return res
     return f
 
 class RegionHeader:
