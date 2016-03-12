@@ -247,18 +247,6 @@ class Block:
         self.id = id
         self.data = data
 
-# here is a decorator for the RegionHeader class
-# there's probably a better way to write and store this,
-# but I don't know too much about decorators/convention
-def _retainFilePos(func):
-    def f(*args, **kwargs):
-        # args[0] should be the 'self' object
-        pos = args[0].file.tell()
-        res = func(*args, **kwargs)
-        args[0].file.seek(pos)
-        return res
-    return f
-
 class RegionHeader:
     """ Wraps a .mca Anvil world file.
         Reads and writes directly from the buffer/stream/file.
@@ -267,7 +255,7 @@ class RegionHeader:
         self.file = stream
         self.x = regionX
         self.z = regionZ
-    @_retainFilePos
+    @_retainFilePos(fileAttr='file')
     def getChunkInfo(self, x, z):
         """ Chunks are always in global chunk coordinates """
         # convert global coords to internal coords
@@ -291,7 +279,7 @@ class RegionHeader:
         return location, size, timestamp
     def _toChunkId(self, x, z):
         return x + z * 32
-    @_retainFilePos
+    @_retainFilePos(fileAttr='file')
     def countChunks(self):
         self.file.seek(0)
         c = 0
@@ -299,7 +287,7 @@ class RegionHeader:
             if self.file.read(4) != b'\x00\x00\x00\x00':
                 c += 1
         return c
-    @_retainFilePos
+    @_retainFilePos(fileAttr='file')
     def countSectors(self):
         self.file.seek(0)
         s = 0
@@ -308,13 +296,13 @@ class RegionHeader:
             if nxt != b'\x00\x00\x00\x00':
                 s += nxt[-1]
         return s
-    @_retainFilePos
+    @_retainFilePos(fileAttr='file')
     def markUpdate(self, x, z):
         # recall: timestamp is 4096 bytes ahead of offset position
         pos = self._getIndex(x, z) + 4096
         self.file.seek(pos)
         self.file.write( int(time.time()).to_bytes(4, 'big', signed=False) )
-    @_retainFilePos
+    @_retainFilePos(fileAttr='file')
     def resize(self, x, z, newsize):
         raise UnsupportedOperationException("Resizing chunks is not done yet.")
         offset, size, timestamp = self.getChunkInfo(x, z)
@@ -322,18 +310,18 @@ class RegionHeader:
         
         # now check every other chunk in the header and offset its location
         # if it occurs ahead of this chunk
-    @_retainFilePos
+    @_retainFilePos(fileAttr='file')
     def setChunkInfo(self, x, z, newOffset, newSize):
         pos = self._getIndex(x, z)
         self.file.seek(pos)
         self.file.write( newOffset.to_bytes(3, 'big', signed=True) )
         self.file.write( newSize.to_bytes(1, 'big', signed=True) )
-    @_retainFilePos
+    @_retainFilePos(fileAttr='file')
     def _alloc(self, size):
         return self.file.seek(0, 2)
     def _getIndex(self, x, z):
         return 4 * ((x & 31) + (z & 31) * 32)
-    @_retainFilePos
+    @_retainFilePos(fileAttr='file')
     def _pack(self):
         """ Squashes the file size down, packing the chunks tightly together.
         """
@@ -341,3 +329,33 @@ class RegionHeader:
 
 def getRegionPos(chunkX, chunkZ):
     return (chunkX >> 5, chunkZ >> 5)
+
+def _retainFilePos(fileAttr=None, fileArg=None, fileKwArg=None):
+    """ Prevent file/buffer/stream object's position from changing.
+        fileAttr - implies that we are wrapping a method and that argument[0]
+        of the wrapped function is self/instance and fileObj is self.fileAttr
+        fileArg - implies that args[fileArg] will be the fileObj
+        fileKwArg - implies that kwargs[fileKwArg] will be the fileObj
+    """
+    # If this introduces too much overhead accessing the args fileAttr, fileArg,
+    # and fileKwArg, this may work better re-written as "class _retainFilePOs"
+    # or by storing fileAttr inside the wrapper function's scope...
+    # or maybe just simplify and make this only work on the RegionHeader
+    # class...
+    def wrapper(func):
+        def wrapped(*args, **kwargs):
+            if fileAttr is not None:
+                # args[0] should be the 'self' object
+                fileObj = getattr(args[0], fileAttr)
+            elif fileKwArg is not None:
+                # this should never be an error unless the caller of the wrapped
+                # method passes the wrong arguments
+                fileObj = kwargs[fileKwArg]
+            else:
+                fileObj = args[fileArg if fileArg is not None else 0]
+            pos = fileObj.tell()
+            res = func(*args, **kwargs)
+            fileObj.seek(pos)
+            return res
+        return wrapped
+    return wrapper
