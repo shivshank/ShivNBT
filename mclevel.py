@@ -360,10 +360,43 @@ class RegionHeader:
                     return False
         return True
     @_retainFilePos(fileAttr='file')
-    def _pack(self):
+    def _pack(self, temp):
         """ Squashes the file size down, packing the chunks tightly together.
+            temp - should be an empty file for buffering read chunks
+                before they are dumped to the actual file
+                (we cant just overwrite in place since chunks could be in any
+                 order)
         """
-        pass
+        # the first chunk must start in sector 2
+        newPos = 2
+        self.file.seek(0)
+        for i in range(1024):
+            # assume we are in the correct position for a read
+            location = int.from_bytes(self.file.read(3), 'big', signed=False)
+            size = int.from_bytes(self.file.read(1), 'big', signed=False)
+            if location == 0 and size == 0:
+                continue
+            # go the the chunk's position
+            self.file.seek(location*4096)
+            # a single chunk of size*4096 bytes should always fit in memory
+            # (if it doesn't, upgrade your RAM!)
+            # store the chunk into the file
+            temp.write(self.file.read(4096*size))
+            # update the header (don't bother finding the x and y)
+            self.file.seek(i*4)
+            self.file.write( newPos.to_bytes(3, 'big', signed=False) )
+            # skip the size since it shouldn't have changed
+            self.file.read(1)
+            # advance the position of where we will write the next sector
+            newPos += size
+        # go to the beginning of the data
+        self.file.seek(2)
+        temp.seek(0)
+        # copy the contents from temp into file
+        shutil.copyfileobj(temp, self.file)
+        # truncate the file
+        self.file.seek(newPos*4096)
+        self.file.truncate()
     @_retainFilePos(fileAttr='file')
     def findHoles(self):
         """ Here's a fun analysis method! Finds the "holes" in the file. """
