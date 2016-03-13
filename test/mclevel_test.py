@@ -67,6 +67,16 @@ def seekTest():
     header.setChunkInfo(0, 0, offset, size)
     print('old pos:', pos, '\nnew pos:', header.file.tell())
 
+def editorTest():
+    with mclevel.MinecraftWorld('gen/editor/region') as editor:
+        b = mclevel.Block(7, 0)
+        editor.setBlock(0, 0, 0, b)
+        editor.setBlock(16, 0, 16, b)
+        editor.setBlock(-15, 0, -15, b)
+        editor.writeAll()
+        print(repr(editor))
+
+editorTest()
 readIntoJSON(0, 0)
 editDemo()
 airChunk(0, 1)

@@ -10,21 +10,161 @@ import math
 from util import _retainFilePos
 
 class MinecraftWorld:
-    def __init__(self, savePath):
-        self.path = savePath
+    def __init__(self, regionPath, safetyMax=10*1024*1024*1024):
+        self.path = regionPath
         self.regionCache = {}
         self.chunkCache = {}
+        self.timestamps = {}
         self.cachedChunks = 0
+        self.maxChunks = 32
         self.cachedRegions = 0
-    def getBlock(self):
-        pass
+        self.maxRegions = 4
+        self.handles = []
+        # 10 gigabyte default
+        self.regionFileMaxSize = safetyMax
+    def getBlock(self, x, y, z):
+        c = self.getChunk(x//16, z//16)
+        x, z = x & 15, z & 15
+        return c.getBlock(x, y, z)
+    def setBlock(self, x, y, z, b):
+        c = self.getChunk(x//16, z//16)
+        x, z = x & 15, z & 15
+        c.setBlock(x, y, z, b)
+        self.timestamps[(x//16, z//16)] = time.time()
     def getChunk(self, x, z):
-        pass
-    def _dropChunk(self):
-        pass
-    def _dropRegion(self):
-        pass
-        
+        try:
+            return self.chunkCache[(x, z)]
+        except KeyError:
+            # we need to load the chunk
+            pass
+        header = self.getRegion(*getRegionPos(x, z))
+        chunkNbt = readChunk(x, z, header)
+        if chunkNbt is None:
+            chunk = Chunk(x, z)
+        else:
+            chunk = nbtToChunk(chunkNbt)
+
+        self.chunkCache[(x, z)] = chunk
+        self.timestamps[(x, z)] = time.time()
+        # drop a chunk if we have too many in memory
+        self.cachedChunks += 1
+        if self.cachedChunks > self.maxChunks:
+            # drop the last updated chunk
+            old = self._getOldestChunk()
+            self.writeChunk(*old)
+            self._dropChunk(*old)
+        return chunk
+    def getRegion(self, x, z):
+        # REFACTOR: this function might do a little too much
+        try:
+            return self.regionCache[(x, z)]
+        except KeyError:
+            # we need to load the region
+            pass
+        r = os.path.join(self.path, 'r.' + str(x) + '.' + str(z) + '.mca')
+        # open the file
+        try:
+            try:
+                # try opening the file for reading and writing, don't truncate
+                f = open(r, mode='r+b')
+            except FileNotFoundError:
+                # w+b will truncate the file, which won't matter if it doesn't
+                # exist
+                f = open(r, mode='w+b')
+                # write an empty header
+                f.write(b'\x00'*(4096*2))
+        except IOException as e:
+            print('something went wrong reading the files')
+            raise e
+        # create the header object
+        header = RegionHeader(x, z, f)
+        self.regionCache[(x, z)] = header
+        # record that we have the file handle
+        self.handles.append(f)
+        self.cachedRegions += 1
+        if self.cachedRegions > 4:
+            # drop the last updated region
+            old = self._getOldestRegion()
+            self.writeRegion(*old)
+            self._dropRegion(*old)
+        return header
+    def writeChunk(self, x, z):
+        c = self.chunkCache[(x, z)]
+        rx, rz = getRegionPos(x, z)
+        writeChunk(chunkToNbt(c), self.regionCache[(rx, rz)])
+    def writeRegion(self, x, z):
+        # writes all the chunks in this region
+        r = (x, z)
+        for c in self.chunkCache.keys():
+            if getRegionPos(*c) == r:
+                self.writeChunk(*c)
+    def writeAll(self):
+        # implicitly writes all regions
+        for c in self.chunkCache.keys():
+            self.writeChunk(*c)
+    def clearCache(self):
+        """ Deletes all unwritten changes. """
+        for i in self.regionCache.keys():
+            self._dropRegion(*i)
+    def _getOldestChunk(self):
+        oldestTime = time.time()
+        oldest = None
+        for k, v in self.timestamps.items():
+            if v < oldestTime:
+                oldest = k
+        return oldest
+    def _dropChunk(self, x, z):
+        """ Drop a chunk (does not write the chunk) """
+        del self.chunkCache[(x, z)]
+        del self.timestamps[(x, z)]
+        self.cachedChunks -= 1
+    def _dropRegion(self, x, z):
+        """ Drop a region and all chunks in it (does not write the chunks) """
+        # drop all the chunks in this region
+        chunks = self._getCachedInRegion(self, x, z)
+        for c in chunks:
+            self._dropChunk(*c)
+        # delete the region, close the file
+        r = self.regionCache[(x, z)]
+        r.file.close()
+        self.handles.remove(r.file)
+        del self.regionCache[(x, z)]
+        self.cachedRegions -= 1
+    def _getCachedInRegion(self, x, z):
+        out = []
+        for k, v in self.chunkCache.items():
+            if getRegionPos(*k) == (x, z):
+                out.append(k)
+        return out
+    def getRegionTimestamp(self, x, z):
+        """ A region is as old as it's newest chunk! """
+        # When in doubt assume it's '70
+        t = 0
+        for k, v in self.chunkCache.items():
+            if getRegionPos(*k) == (x, z):
+                t = max(self.timestamps[k], t)
+        return t
+    def __exit__(self, exctype, exc, trace):
+        try:
+            self.closeAll()
+        except Exception as e:
+            # todo: handle closing exceptions...
+            raise e
+        if exc is not None:
+            raise exc
+    def __enter__(self):
+        return self
+    def closeAll(self):
+        for i in self.handles:
+                i.close()
+    def __repr__(self):
+        attrs = {
+            'cachedChunks': self.cachedChunks,
+            'cachedRegions': self.cachedRegions,
+            'regions': self.regionCache.keys()
+        }
+        return 'MinecraftWorld' + str(attrs)
+
 def readChunk(x, z, regionHeader):
     """ Returns the NBT Tag describing a chunk at offset within the region file.
         If the chunk does not exist, returns None.
