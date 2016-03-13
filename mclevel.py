@@ -31,6 +31,21 @@ class MinecraftWorld:
         x, z = x & 15, z & 15
         c.setBlock(x, y, z, b)
         self.timestamps[(x//16, z//16)] = time.time()
+    def fillRegion(self, xMin, yMin, zMin, xSize, height, zSize, b):
+        xMax = xMin + xSize
+        zMax = zMin + zSize
+        yMax = yMin + height
+        # if this is too slow too often, we could probably optimize this quite a
+        # bit by working in groups of chunks!
+        for z in range(zMin, zMax):
+            for x in range(xMin, xMax):
+                for y in range(yMin, yMax):
+                    self.setBlock(x, y, z, b)
+    def initializeArea(self, xMin, zMin, xSize, zSize, terrainPopulated):
+        for z in range(zMin, xMin + zSize):
+            for x in range(xMin, xMin + xSize):
+                c = self.getChunk(x, z)
+                c.terrainPopulated = terrainPopulated
     def getChunk(self, x, z):
         try:
             return self.chunkCache[(x, z)]
@@ -73,7 +88,7 @@ class MinecraftWorld:
                 f = open(r, mode='w+b')
                 # write an empty header
                 f.write(b'\x00'*(4096*2))
-        except IOException as e:
+        except IOError as e:
             print('something went wrong reading the files')
             raise e
         # create the header object
@@ -235,7 +250,7 @@ def nbtToChunk(root):
                   inhabitedTime=chunkDict['InhabitedTime'],
                   lightPopulated=chunkDict['LightPopulated'],
                   lastUpdate=chunkDict['LastUpdate'])
-    
+
     for section in chunkDict['Sections']:
         blocks = []
         sectionY = section['Y']
@@ -286,6 +301,11 @@ def chunkToNbt(chunk):
     ])
     # Things that may or may not exist:
     # Biomes, TileTicks
+    if chunk.biomes is not None:
+        print('Writing biomes...')
+        print(chunk.biomes)
+        root.value["Biomes"] = nbt.Tag("TAG_Byte_Array", "Biomes", chunk.biomes)
+
     sects = len(chunk.sections.keys())
     if sects == 0:
         root['Level']['Sections'].listType = nbt.Tag.TAG_End
@@ -384,6 +404,12 @@ class Chunk:
                         self.heightmap[z*16 + x] = y
                         break
         return self.heightmap
+    def fillBiome(self, biomeId):
+        self.biomes = [biomeId for i in range(256)]
+    def setBiome(self, x, z, biomeId, defaultBiome=-1):
+        if self.biomes is None:
+            self.fillBiome(defaultBiome)
+        self.biomes[z*16 + x] = biomeId
 
 class Block:
     def __init__(self, id, data):
