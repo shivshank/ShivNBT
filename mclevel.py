@@ -25,10 +25,11 @@ class MinecraftWorld:
     def _dropRegion(self):
         pass
         
-def readChunk(x, z, stream, regionHeader):
+def readChunk(x, z, regionHeader):
     """ Returns the NBT Tag describing a chunk at offset within the region file.
         If the chunk does not exist, returns None.
     """
+    stream = regionHeader.file
     offset, size, timestamp = regionHeader.getChunkInfo(x, z)
     if offset is None:
         return None
@@ -50,7 +51,8 @@ def readChunk(x, z, stream, regionHeader):
     reader = nbt.NbtReader(unzipped)
     return reader.read()
 
-def writeChunk(tag, regionFile, regionHeader, safetyMax=None):
+def writeChunk(tag, regionHeader, safetyMax=None):
+    regionFile = regionHeader.file
     x, z = tag['Level']['xPos'].value, tag['Level']['zPos'].value
     offset, size, timestamp = regionHeader.getChunkInfo(x, z)
     writer = nbt.NbtWriter(io.BytesIO(), safetyMax=safetyMax)
@@ -306,18 +308,25 @@ class RegionHeader:
     @_retainFilePos(fileAttr='file')
     def resize(self, x, z, newSize):
         offset, size, timestamp = self.getChunkInfo(x, z)
-        if size == newSize:
-            return
-        if newSize < size:
+        # the chunks exists and the chunk shrank
+        if offset is not None and newSize < size:
             self.setChunkInfo(x, z, offset, newSize)
             # if we shrunk, zero out the old space
             dif = newSize - size
             self.file.seek(4096 * (offset + newSize))
-            self.file.write(b'\x00'*dif)
+            self.file.write(b'\x00'*(dif*4096))
             return
+        # if the chunk doesn't exist:
+        elif offset is None:
+            newOffset = self._alloc(newSize)
+            self.setChunkInfo(x, z, newOffset, newSize)
+            # make sure the file gets padded to the right size
+            self.file.seek(newOffset * 4096)
+            self.file.write(b'\x00'*(newSize*4096))
+            return
+        # the chunk grew... this could get ugly!
         # make it look like this chunk's space is not taken
-        # (_isFree will otherwise tell us that it is taken since this chunk uses
-        #  it)
+        # (_isFree will otherwise tell us that it is taken)
         self.setChunkInfo(x, z, 0, 0)
         # do we need to change the offset or can we just expand it?
         if self._isFree(*range(offset, offset+newSize)):
@@ -326,12 +335,13 @@ class RegionHeader:
         # we must reallocate this chunk...
         newOffset = self._alloc(newSize)
         self.setChunkInfo(x, z, newOffset, newSize)
-        # grab the old data and set it to zero
-        # (setting it to zero is probably unnecessary, but who cares)
+        # grab the old data and set it to zero if it exists
+        # (setting it to zero is probably unnecessary)
         self.file.seek(offset * 4096)
-        data = self.file.read(size)
-        self.file.write(b'\x00'*size)
-        self.file.seek(newOffset)
+        data = self.file.read(size*4096)
+        self.file.seek(offset * 4096)
+        self.file.write(b'\x00'*(size*4096))
+        self.file.seek(newOffset * 4096)
         self.file.write(data)
     @_retainFilePos(fileAttr='file')
     def setChunkInfo(self, x, z, newOffset, newSize):
@@ -342,7 +352,8 @@ class RegionHeader:
     @_retainFilePos(fileAttr='file')
     def _alloc(self, size):
         self.file.seek(0, 2)
-        pos = self.file.tell()
+        pos = self.file.tell()//4096
+        assert self.file.tell() & 4095 == 0
         return pos
     def _getIndex(self, x, z):
         return 4 * ((x & 31) + (z & 31) * 32)

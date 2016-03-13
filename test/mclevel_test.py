@@ -13,7 +13,7 @@ def readIntoJSON(x, z):
     path = 'nbt/region/r.' + str(rx) + '.' + str(rz) + '.mca'
     with open(path, mode='rb') as file:
         header = mclevel.RegionHeader(rx, rz, file)
-        chunkTag = mclevel.readChunk(x, z, file, header)
+        chunkTag = mclevel.readChunk(x, z, header)
     chunk = mclevel.nbtToChunk(chunkTag)
     nbt.tagToJson('json', 'chunk.' + str(x) + '.' + str(z) + '.nbt', chunkTag)
     print('block 0, 70, 0 is id', chunk.getBlock(0, 70, 0).id)
@@ -29,13 +29,13 @@ def editDemo():
     print('\tCopy successful, copied', len(vFile.getbuffer()), 'bytes')
     
     header = mclevel.RegionHeader(0, 0, vFile)
-    chunk = mclevel.nbtToChunk(mclevel.readChunk(0, 0, vFile, header))
+    chunk = mclevel.nbtToChunk(mclevel.readChunk(0, 0, header))
     chunk.lightPopulated = 0
     print('\tblock 0, 70, 0 is block id', chunk.getBlock(0, 70, 0).id)
     print('\tchanging block')
     chunk.setBlock(0, 70, 0, mclevel.Block(7, 0))
     print('\tblock 0, 70, 0 is block id', chunk.getBlock(0, 70, 0).id)
-    mclevel.writeChunk(mclevel.chunkToNbt(chunk), vFile, header,
+    mclevel.writeChunk(mclevel.chunkToNbt(chunk), header,
                        safetyMax=5 * 1024 * 1024)
     print('Virtual file is', len(vFile.getbuffer()),
           'bytes. Write to disk (y/n)?')
@@ -54,7 +54,7 @@ def airChunk(x, z):
     c.lightPopulated = 0
     with open(path.join('gen', path.basename(p)), mode='r+b') as file:
         header = mclevel.RegionHeader(rx, rz, file)
-        mclevel.writeChunk(mclevel.chunkToNbt(c), file, header,
+        mclevel.writeChunk(mclevel.chunkToNbt(c), header,
                            safetyMax=5 * 1024 * 1024)
 
 def seekTest():
