@@ -70,14 +70,15 @@ def seekTest():
 def editorTest():
     with mclevel.MinecraftWorld('gen/editor/region') as editor:
         b = mclevel.Block(7, 0)
-        editor.initializeArea(-1, -1, 3, 3, True)
-        editor.fillRegion(0, 5, 0, 16, 1, 16, mclevel.Block(1, 0))
+        editor.initializeArea(-3, -3, 7, 7, False)
+        editor.fillRegion(-30, 5, -30, 60, 1, 60, mclevel.Block(2, 0))
+        editor.fillRegion(0, 5, 0, 16, 5, 16, mclevel.Block(1, 0))
         # fill it with a jungle biome
-        c = editor.getChunk(0, 0)
+        c = editor.getChunk(-1, 0)
         c.fillBiome(21)
         # set some blocks to plains
-        #c.setBiome(5, 5, 0)
-        #c.setBiome(5, 6, 0)
+        c.setBiome(-5, 5, 0)
+        c.setBiome(-5, 6, 0)
         # draw some bedrock
         editor.setBlock(0, 0, 0, b)
         editor.setBlock(16, 0, 16, b)
@@ -90,6 +91,11 @@ def editorTest():
     chunk = mclevel.nbtToChunk(chunkTag)
     nbt.tagToJson('json/editor/', 'chunk.0.0.nbt', chunkTag)
     
+def stripChunk():
+    with mclevel.MinecraftWorld('gen/editor/region') as editor:
+        c = editor.getChunk(0, -4)
+        c.stripBlock(Block(1, 0))
+        c.stripBlock(Block(7, 0))
 
 editorTest()
 readIntoJSON(0, 0)
