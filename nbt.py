@@ -7,12 +7,13 @@ def toJson(fileName, outputDir, gzipped=True):
     """ Write an NBT as two JSON files.
         the .tagtypes.json file describes the NBT types of all the tags,
         while the .json file contains the actual values.
-        
+
         Two files are required because JSON (Javascript) only supports a single
         Number type (IEEE floats), so all bytes, shorts, ints, etc are converted
         to floats.
-        
-        Doubles/longs may be truncated (I presume).
+
+        Longs may be truncated if JSON module refuses to read/write numbers
+        larger than the max double.
     """
     path, name = os.path.split(fileName)
     tagtypes = os.path.join(outputDir,
@@ -124,7 +125,7 @@ class Tag:
         TAG_Compound: 'TAG_Compound',
         TAG_Int_Array: 'TAG_Int_Array'
     }
-    
+
     def __init__(self, id, name, val=None, listType=None):
         if type(id) is str:
             id = getattr(Tag, id)
@@ -146,7 +147,7 @@ class Tag:
             return self._pythonifyPayload(self.value)
         elif self.id == Tag.TAG_Compound:
             return dict((k, v.pythonify()) for k, v in self.value.items())
-            
+
         return self.value
     def prettystr(self, indent=4):
         # JSON dumps looks nice in my opinion than pprint output
@@ -214,7 +215,7 @@ class NbtWriter:
         Tag.TAG_Compound: 'writeCompound',
         Tag.TAG_Int_Array: 'writeIntArray'
     }
-    
+
     def __init__(self, stream, safetyMax=None):
         """
             stream - the stream to write to
@@ -291,7 +292,7 @@ class NbtReader:
         Tag.TAG_Compound: 'readCompound',
         Tag.TAG_Int_Array: 'readIntArray'
     }
-    
+
     def __init__(self, stream):
         self.file = stream
         self.root = None
@@ -302,7 +303,7 @@ class NbtReader:
         t = self.readTagHeader()
         if t.id == Tag.TAG_End:
             return t
-        
+
         if t.id == Tag.TAG_List:
             t.listType, t.value = self.parsePayload(t.id)
         else:
@@ -368,4 +369,3 @@ class NbtReader:
         s = self.file.read(length)
         s = s.decode('utf-8')
         return s
-    
