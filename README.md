@@ -1,6 +1,14 @@
-Here is my own implementation of the NBT file format, such as the one used in Minecraft. As of writing (March 5, 2016), it appears able to properly parse some of the files (such as level.dat).
+Here is my own implementation of the NBT file format, such as the one used in Minecraft.
+
+It can read and write NBT files, export them to JSON, and additionally read them back from JSON to NBT.
+
+The Minecraft level facilities are capable of generating new levels and editing old levels. There are some (many) bugs to squash.
+
+This is only for Python programmers; i.e., there is not an easy to use client for end users/non coders.
 
 TODO:
- * allow writing NBT files
- * to/from JSON converter (with some kind of definition file to explain how numbers are stored)
- * read level/region/chunk files (.mca, etc)
+ - add license
+ - more docs
+ - unit testing
+ - finish implementing world generation tools
+ - add demo Minecraft world generator
