@@ -1,13 +1,81 @@
-""" 
+"""
     Here are some facilities for parsing Minecraft level files.
 """
+import os
 import os.path
 import time
 import zlib
 import nbt
 import io
 import math
+import json
 from util import _retainFilePos
+import gzip
+
+class MinecraftLevel:
+    """ Responsible for auxillary data about a level, like the level.dat, etc
+    """
+    def __init__(self, pathToWorld, levelOptions=None):
+        self.path = pathToWorld
+        # only try making the endmost file since only that represents the level
+        if not os.path.exists(self.path):
+            os.mkdir(self.path)
+        self.levelFile = os.path.join(self.path, "level.dat")
+        if "level.dat" not in os.listdir(self.path):
+            # load in the default data from the format file
+            initialDataFile = 'formats/level.dat.json'
+            with open(initialDataFile, mode='r') as file:
+                self._levelOptions = json.load(file)
+        else:
+            # load in the data from the existing file
+            with gzip.open(self.levelFile) as file:
+                reader = nbt.NbtReader(file)
+                self._levelOptions = reader.read().pythonify()
+        if levelOptions is not None:
+            # merge the requested changes in
+            self.levelOptions.update({"Data": levelOptions})
+        overworldPath = os.path.join(self.path, 'region')
+        netherPath = os.path.join(self.path, 'DIM-1')
+        endPath = os.path.join(self.path, 'DIM1')
+        if not os.path.exists(overworldPath):
+            os.mkdir(overworldPath)
+        if not os.path.exists(netherPath):
+            os.mkdir(netherPath)
+        if not os.path.exists(endPath):
+            os.mkdir(endPath)
+        self.overworld = MinecraftWorld(overworldPath)
+        self.nether = MinecraftWorld(netherPath)
+        self.end = MinecraftWorld(endPath)
+    @property
+    def levelOptions(self):
+        # hide the 'Data' tag from observers
+        return self._levelOptions['Data']
+    @levelOptions.setter
+    def levelOptions(self, value):
+        self._levelOptions['Data']
+    def writeLevelOptions(self):
+        levelFile = self.levelFile
+        with open('formats/level.tagtypes.json', mode='r') as file:
+            tagTypes = json.load(file)
+        nbtTag = nbt.fromDict("", self._levelOptions, tagTypes)
+        with gzip.open(levelFile, mode='wb') as file:
+            writer = nbt.NbtWriter(file)
+            writer.write(nbtTag)
+    def writeAll(self):
+        self.writeLevelOptions()
+        self.overworld.writeAll()
+        self.nether.writeAll()
+        self.end.writeAll()
+    def __enter__(self):
+        self.overworld = self.overworld.__enter__()
+        self.nether = self.nether.__enter__()
+        self.end = self.end.__enter__()
+        return self
+    def __exit__(self, *args):
+        # TODO: handle exceptions properly
+        self.overworld.__exit__(*args)
+        self.nether.__exit__(*args)
+        self.end.__exit__(*args)
 
 class MinecraftWorld:
     def __init__(self, regionPath, safetyMax=10*1024*1024*1024):
@@ -243,7 +311,7 @@ def nbtToChunk(root):
     """ Create a chunk from an NBT tag. """
     chunkDict = root.pythonify()['Level']
     cx, cz = chunkDict['xPos'], chunkDict['zPos']
-    
+
     # initialize the chunk object
     chunk = Chunk(cx, cz,
                   terrainPopulated=chunkDict['TerrainPopulated'],
@@ -353,7 +421,7 @@ class Chunk:
         self.heightmap = None
         self.x = xPos
         self.z = zPos
-        
+
         self.inhabitedTime = kw.get('inhabitedTime', 0)
         self.terrainPopulated = kw.get('terrainPopulated', 1)
         self.lightPopulated = kw.get('lightPopulated', 0)
@@ -419,9 +487,17 @@ class Block:
 class RegionHeader:
     """ Wraps a .mca Anvil world file.
         Reads and writes directly from the buffer/stream/file.
+
+        It is the caller's responsibility to manage the file.
+
+        User could also pass an in memory buffer.
     """
     def __init__(self, regionX, regionZ, stream):
         self.file = stream
+        if self.file.read(1) == b'':
+            # write the two initial sectors if the file is empty
+            self.file.seek(0)
+            self.file.write(b'\x00'*4096*2)
         self.x = regionX
         self.z = regionZ
     @_retainFilePos(fileAttr='file')
@@ -439,7 +515,7 @@ class RegionHeader:
         # I don't think it makes sense for any of these values to be signed
         location = int.from_bytes(self.file.read(3), 'big', signed=False)
         size = int.from_bytes(self.file.read(1), 'big', signed=False)
-        
+
         if location == 0 and size == 0:
             return None, None, None
 

@@ -1,0 +1,171 @@
+{
+    "Data": {
+        "RandomSeed": "TAG_Long",
+        "generatorName": "TAG_String",
+        "BorderCenterZ": "TAG_Double",
+        "Difficulty": "TAG_Byte",
+        "BorderSizeLerpTime": "TAG_Long",
+        "raining": "TAG_Byte",
+        "DimensionData": {
+            "1": {
+                "DragonFight": {
+                    "Gateways": [
+                        "TAG_Int"
+                    ],
+                    "DragonKilled": "TAG_Byte",
+                    "PreviouslyKilled": "TAG_Byte"
+                }
+            }
+        },
+        "Time": "TAG_Long",
+        "GameType": "TAG_Int",
+        "MapFeatures": "TAG_Byte",
+        "BorderCenterX": "TAG_Double",
+        "BorderDamagePerBlock": "TAG_Double",
+        "BorderWarningBlocks": "TAG_Double",
+        "BorderSizeLerpTarget": "TAG_Double",
+        "Version": {
+            "Snapshot": "TAG_Byte",
+            "Id": "TAG_Int",
+            "Name": "TAG_String"
+        },
+        "DayTime": "TAG_Long",
+        "initialized": "TAG_Byte",
+        "allowCommands": "TAG_Byte",
+        "SizeOnDisk": "TAG_Long",
+        "GameRules": {
+            "doTileDrops": "TAG_String",
+            "doFireTick": "TAG_String",
+            "reducedDebugInfo": "TAG_String",
+            "naturalRegeneration": "TAG_String",
+            "disableElytraMovementCheck": "TAG_String",
+            "doMobLoot": "TAG_String",
+            "keepInventory": "TAG_String",
+            "doEntityDrops": "TAG_String",
+            "mobGriefing": "TAG_String",
+            "randomTickSpeed": "TAG_String",
+            "commandBlockOutput": "TAG_String",
+            "spawnRadius": "TAG_String",
+            "doMobSpawning": "TAG_String",
+            "maxEntityCramming": "TAG_String",
+            "logAdminCommands": "TAG_String",
+            "spectatorsGenerateChunks": "TAG_String",
+            "doWeatherCycle": "TAG_String",
+            "sendCommandFeedback": "TAG_String",
+            "doDaylightCycle": "TAG_String",
+            "showDeathMessages": "TAG_String"
+        },
+        "Player": {
+            "HurtByTimestamp": "TAG_Int",
+            "SleepTimer": "TAG_Short",
+            "Attributes": [
+                {
+                    "Base": "TAG_Double",
+                    "Name": "TAG_String"
+                },
+                {
+                    "Base": "TAG_Double",
+                    "Name": "TAG_String"
+                },
+                {
+                    "Base": "TAG_Double",
+                    "Name": "TAG_String"
+                },
+                {
+                    "Base": "TAG_Double",
+                    "Name": "TAG_String"
+                },
+                {
+                    "Base": "TAG_Double",
+                    "Name": "TAG_String"
+                },
+                {
+                    "Base": "TAG_Double",
+                    "Name": "TAG_String"
+                },
+                {
+                    "Base": "TAG_Double",
+                    "Name": "TAG_String"
+                },
+                {
+                    "Base": "TAG_Double",
+                    "Name": "TAG_String"
+                }
+            ],
+            "Invulnerable": "TAG_Byte",
+            "FallFlying": "TAG_Byte",
+            "PortalCooldown": "TAG_Int",
+            "AbsorptionAmount": "TAG_Float",
+            "abilities": {
+                "invulnerable": "TAG_Byte",
+                "mayfly": "TAG_Byte",
+                "instabuild": "TAG_Byte",
+                "walkSpeed": "TAG_Float",
+                "mayBuild": "TAG_Byte",
+                "flying": "TAG_Byte",
+                "flySpeed": "TAG_Float"
+            },
+            "FallDistance": "TAG_Float",
+            "DeathTime": "TAG_Short",
+            "XpSeed": "TAG_Int",
+            "XpTotal": "TAG_Int",
+            "playerGameType": "TAG_Int",
+            "Motion": [
+                "TAG_Double"
+            ],
+            "UUIDLeast": "TAG_Long",
+            "Health": "TAG_Float",
+            "foodSaturationLevel": "TAG_Float",
+            "Air": "TAG_Short",
+            "OnGround": "TAG_Byte",
+            "Dimension": "TAG_Int",
+            "Rotation": [
+                "TAG_Float"
+            ],
+            "XpLevel": "TAG_Int",
+            "Score": "TAG_Int",
+            "UUIDMost": "TAG_Long",
+            "Sleeping": "TAG_Byte",
+            "Pos": [
+                "TAG_Double"
+            ],
+            "Fire": "TAG_Short",
+            "XpP": "TAG_Float",
+            "EnderItems": [
+                "TAG_End"
+            ],
+            "DataVersion": "TAG_Int",
+            "foodLevel": "TAG_Int",
+            "foodExhaustionLevel": "TAG_Float",
+            "HurtTime": "TAG_Short",
+            "SelectedItemSlot": "TAG_Int",
+            "Inventory": [
+                {
+                    "Slot": "TAG_Byte",
+                    "id": "TAG_String",
+                    "Count": "TAG_Byte",
+                    "Damage": "TAG_Short"
+                }
+            ],
+            "foodTickTimer": "TAG_Int"
+        },
+        "SpawnY": "TAG_Int",
+        "rainTime": "TAG_Int",
+        "thunderTime": "TAG_Int",
+        "SpawnZ": "TAG_Int",
+        "hardcore": "TAG_Byte",
+        "DifficultyLocked": "TAG_Byte",
+        "SpawnX": "TAG_Int",
+        "clearWeatherTime": "TAG_Int",
+        "thundering": "TAG_Byte",
+        "generatorVersion": "TAG_Int",
+        "version": "TAG_Int",
+        "BorderSafeZone": "TAG_Double",
+        "generatorOptions": "TAG_String",
+        "LastPlayed": "TAG_Long",
+        "BorderWarningTime": "TAG_Double",
+        "LevelName": "TAG_String",
+        "BorderSize": "TAG_Double",
+        "DataVersion": "TAG_Int"
+    }
+}
