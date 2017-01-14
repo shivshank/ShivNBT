@@ -174,6 +174,7 @@ class MinecraftWorld:
     def writeChunk(self, x, z):
         c = self.chunkCache[(x, z)]
         rx, rz = getRegionPos(x, z)
+        assert self.regionCache[(rx, rz)], "region was not loaded"
         writeChunk(chunkToNbt(c), self.regionCache[(rx, rz)])
     def writeRegion(self, x, z):
         # writes all the chunks in this region
@@ -195,6 +196,10 @@ class MinecraftWorld:
         for k, v in self.timestamps.items():
             if v < oldestTime:
                 oldest = k
+        # there may not always be an oldest chunk... ie if everything happens
+        # REALLY fast
+        if oldest is None:
+            oldest = next(iter(self.timestamps.items()))[0]
         return oldest
     def _dropChunk(self, x, z):
         """ Drop a chunk (does not write the chunk) """
