@@ -42,7 +42,7 @@ class MinecraftWorld:
                 for y in range(yMin, yMax):
                     self.setBlock(x, y, z, b)
     def initializeArea(self, xMin, zMin, xSize, zSize, terrainPopulated):
-        for z in range(zMin, xMin + zSize):
+        for z in range(zMin, zMin + zSize):
             for x in range(xMin, xMin + xSize):
                 c = self.getChunk(x, z)
                 c.terrainPopulated = terrainPopulated
